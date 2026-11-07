@@ -26,7 +26,11 @@ node_modules/
 configs/*.local.json
 configs/*.local.yaml
 
-# Internal planning and local instructions
+# Portable builds & binaries
+bin/
+*.zip
+*.spec
+ViMax_Studio.exe
 AGENTS.md
 project_plan/
 project_working/
