@@ -32,6 +32,7 @@ from tools.image_generator_nanobanana_yunwu_api import ImageGeneratorNanobananaY
 from tools.image_generator_openrouter_api import ImageGeneratorOpenRouterAPI
 from tools.reranker_bge_silicon_api import RerankerBgeSiliconapi
 from tools.video_generator_openrouter_api import VideoGeneratorOpenRouterAPI
+from tools.video_generator_doubao_seedance_yunwu_api import VideoGeneratorDoubaoSeedanceYunwuAPI
 from tools.video_generator_veo_yunwu_api import VideoGeneratorVeoYunwuAPI
 
 from .config import api_provider_from_base_url, embedding_api_key, embedding_base_url, embedding_model, embedding_model_provider, image_api_key, image_base_url, image_model, llm_api_key, llm_base_url, llm_model, llm_model_provider, reranker_api_key, reranker_base_url, reranker_model, video_api_key, video_base_url, video_model, video_provider
@@ -592,7 +593,11 @@ def _build_image_generator() -> ImageGeneratorNanobananaYunwuAPI | ImageGenerato
     return ImageGeneratorNanobananaYunwuAPI(api_key=api_key, model=model, base_url=base_url)
 
 
-def _build_video_generator() -> VideoGeneratorVeoYunwuAPI | VideoGeneratorOpenRouterAPI:
+def _build_video_generator() -> (
+    VideoGeneratorVeoYunwuAPI
+    | VideoGeneratorOpenRouterAPI
+    | VideoGeneratorDoubaoSeedanceYunwuAPI
+):
     api_key = video_api_key()
     if not api_key:
         raise RuntimeError("VIMAX_VIDEO_API_KEY, VIMAX_LLM_API_KEY, or configs/agent.local.yaml video/llm api_key is required for video generation")
@@ -601,7 +606,16 @@ def _build_video_generator() -> VideoGeneratorVeoYunwuAPI | VideoGeneratorOpenRo
     provider = video_provider().strip().lower()
     if provider == "openrouter":
         return VideoGeneratorOpenRouterAPI(api_key=api_key, model=model, base_url=base_url)
-    if provider == "yunwu":
+    if provider in ("yunwu", "seedance", "doubao"):
+        if "seedance" in model.lower() or "doubao" in model.lower() or provider in ("seedance", "doubao"):
+            ff2v = model.replace("-t2v-", "-i2v-") if "-t2v-" in model else model
+            return VideoGeneratorDoubaoSeedanceYunwuAPI(
+                api_key=api_key,
+                t2v_model=model,
+                ff2v_model=ff2v,
+                flf2v_model=ff2v,
+                base_url=base_url,
+            )
         return VideoGeneratorVeoYunwuAPI(api_key=api_key, t2v_model=model, ff2v_model=model, base_url=base_url)
     raise RuntimeError(f"Unsupported video base_url for automatic provider matching: {base_url}")
 

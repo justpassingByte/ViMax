@@ -16,6 +16,7 @@ class VideoGeneratorDoubaoSeedanceYunwuAPI:
         max_create_attempts: int = 3,
         poll_interval: int = 2,
         max_poll_attempts: int = 300,
+        base_url: str = "https://yunwu.ai/volc/v1",
     ):
         self.api_key = api_key
         self.t2v_model = t2v_model
@@ -24,6 +25,15 @@ class VideoGeneratorDoubaoSeedanceYunwuAPI:
         self.max_create_attempts = max_create_attempts
         self.poll_interval = poll_interval
         self.max_poll_attempts = max_poll_attempts
+        self.base_url = (base_url or "https://yunwu.ai/volc/v1").rstrip("/")
+
+    def _tasks_endpoint(self) -> str:
+        base = self.base_url
+        if base.endswith("/contents/generations/tasks"):
+            return base
+        if base.endswith("/volc/v1"):
+            return f"{base}/contents/generations/tasks"
+        return f"{base}/volc/v1/contents/generations/tasks" 
 
 
     async def create_video_generation_task(
@@ -56,7 +66,7 @@ class VideoGeneratorDoubaoSeedanceYunwuAPI:
 
         logging.info(f"Calling {model} to generate video...")
 
-        url = "https://yunwu.ai/volc/v1/contents/generations/tasks"
+        url = self._tasks_endpoint()
 
 
         content = [
@@ -132,17 +142,19 @@ class VideoGeneratorDoubaoSeedanceYunwuAPI:
     async def query_video_generation_task(
         self,
         task_id: str,
+        progress=None,
     ) -> str:
         """
         Query the video generation task until completion and return the video URL.
         
         Args:
             task_id: Task ID to query
+            progress: Optional callback for status emission
             
         Returns:
             Video URL string
         """
-        url = f"https://yunwu.ai/volc/v1/contents/generations/tasks/{task_id}"
+        url = f"{self._tasks_endpoint()}/{task_id}"
         headers = {
             'Authorization': f'Bearer {self.api_key}',
         }
@@ -175,12 +187,16 @@ class VideoGeneratorDoubaoSeedanceYunwuAPI:
             if status == "succeeded":
                 video_url = response_json["content"]["video_url"]
                 logging.info(f"Video generation completed successfully. Video URL: {video_url}")
+                if progress is not None:
+                    progress("video_completed", "Video generation completed", {"model": self.t2v_model, "task_id": task_id})
                 return video_url
             elif status == "failed":
                 logging.error(f"Video generation failed. Response: {response_json}")
                 raise ValueError("Video generation failed.")
             else:
                 logging.info(f"Video generation is still in progress. Checking again in {self.poll_interval} seconds...")
+                if progress is not None:
+                    progress("video_status", f"Seedance video generation status: {status}", {"model": self.t2v_model, "task_id": task_id, "status": status})
                 await asyncio.sleep(self.poll_interval)
 
     async def generate_single_video(
@@ -207,6 +223,6 @@ class VideoGeneratorDoubaoSeedanceYunwuAPI:
             VideoOutput containing the video URL
         """
         task_id = await self.create_video_generation_task(prompt, reference_image_paths, resolution, aspect_ratio, fps, duration)
-        video_url = await self.query_video_generation_task(task_id)
+        video_url = await self.query_video_generation_task(task_id, progress=kwargs.get("progress"))
         return VideoOutput(fmt="url", ext="mp4", data=video_url)
 

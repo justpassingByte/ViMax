@@ -8,13 +8,13 @@ llm:
   api_key: ''
 
 audio:
-  model_provider: elevenlabs
-  model: eleven_multilingual_v2
+  model_provider: elevenlabs    # elevenlabs hoặc edge-tts
+  model: eleven_multilingual_v2 # hoặc vi-VN-NamMinhNeural (Edge-TTS)
   base_url: https://api.elevenlabs.io/v1
-  api_key: ''
-  voice: 21m00Tcm4TlvDq8ikWAM
-  bgm_file: ''
-  bgm_volume: 0.15
+  api_key: ''                   # ElevenLabs API key (Edge-TTS để trống)
+  voice: 21m00Tcm4TlvDq8ikWAM   # ElevenLabs Voice ID hoặc tên giọng Edge-TTS
+  bgm_file: ''                  # Đường dẫn file nhạc nền mp3 (nếu có)
+  bgm_volume: 0.15              # Âm lượng nhạc nền
 
 image:
   model: <YOUR_IMAGE_MODEL>
@@ -27,6 +27,23 @@ image_selection:
   num_candidates: 2
 
 video:
+  # Cấu hình tạo video. Có 3 lựa chọn phổ biến:
+  # Lựa chọn 1 (KHUYÊN DÙNG vì tốc độ siêu nhanh ~10-20s/clip): ByteDance Seedance qua Yunwu
+  #   model_provider: seedance
+  #   model: doubao-seedance-1-0-lite-t2v-250428  (hoặc seedance-2.0-fast)
+  #   base_url: https://yunwu.ai/volc/v1
+  #   api_key: <YUNWU_API_KEY>
+  #
+  # Lựa chọn 2 (Seedance 2.0 Fast qua OpenRouter):
+  #   model_provider: openrouter
+  #   model: bytedance/seedance-2.0-fast
+  #   base_url: https://openrouter.ai/api/v1
+  #   api_key: <OPENROUTER_API_KEY>
+  #
+  # Lựa chọn 3 (Google Veo qua Yunwu):
+  #   model: veo3.1-fast
+  #   base_url: https://yunwu.ai
+  #   api_key: <YUNWU_API_KEY>
   model: <YOUR_VIDEO_MODEL>
   base_url: <YOUR_VIDEO_BASE_URL>
   api_key: ''

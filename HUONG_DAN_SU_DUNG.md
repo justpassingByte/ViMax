@@ -22,6 +22,26 @@ npm run dev
 
 Giao diện ViMax đã được **Việt hóa hoàn toàn**. Bạn có thể cấu hình trực quan tại mục **"Cài đặt Cấu hình"** trên Web UI hoặc sửa trực tiếp file `configs/agent.local.yaml`:
 
+### ⚡ Cấu hình Video - Tối ưu Tốc Độ Tạo Phim với Seedance (Khuyên Dùng):
+Tốc độ tạo video thường là nút thắt cổ chai lớn nhất khi làm phim AI. Các model truyền thống như Google Veo 3 / Kling / Sora thường mất từ **1.5 đến 3 phút** cho mỗi shot quay 5 giây. Với phim dài có 50 - 100 shots, thời gian chờ có thể lên tới 2 - 4 tiếng.
+
+**Doubao Seedance (ByteDance)** là giải pháp tối ưu hàng đầu:
+* **Tốc độ thần tốc:** Chỉ **~10 - 25 giây** mỗi cú máy (nhanh gấp 5 - 10 lần các model khác).
+* **Khả năng nối shot mượt mà (First Frame & Last Frame to Video):** Giữ chuyển động camera liền mạch giữa các cảnh.
+* **Chi phí tiết kiệm:** Rẻ hơn 3x - 5x so với Veo 3.
+
+**Cách thiết lập Seedance:**
+* **Cách 1: Trực tiếp qua Yunwu API (Khuyên dùng):**
+  * `model_provider: seedance` (hoặc để trống)
+  * `model: doubao-seedance-1-0-lite-t2v-250428` (hoặc `seedance-2.0-fast`)
+  * `base_url: https://yunwu.ai/volc/v1`
+  * `api_key: <Key_Yunwu_Cua_Ban>`
+* **Cách 2: Qua OpenRouter (Nếu dùng chung cổng OpenRouter):**
+  * `model_provider: openrouter`
+  * `model: bytedance/seedance-2.0-fast`
+  * `base_url: https://openrouter.ai/api/v1`
+  * `api_key: <Key_OpenRouter_Cua_Ban>`
+
 ### 🎙️ Cấu hình Âm thanh & Lồng tiếng (ElevenLabs / Edge-TTS)
 * **Nếu dùng ElevenLabs (Đẳng cấp điện ảnh - Khuyên dùng):**
   * `model_provider: elevenlabs`
@@ -39,8 +59,7 @@ Giao diện ViMax đã được **Việt hóa hoàn toàn**. Bạn có thể c�
 
 ### 🤖 Các Model khác:
 * **LLM (Biên kịch & Đạo diễn):** `gpt-4o-mini`, `deepseek-chat`, hoặc `gemini-2.5-flash`
-* **Image (Tạo ảnh nhân vật & Keyframe):** `gemini-3.1-flash-image-preview`, `flux-pro`, `midjourney` qua OpenRouter
-* **Video (Tạo chuyển động cú máy):** `veo3.1-fast`, `kling`, `runway` qua OpenRouter
+* **Image (Tạo ảnh nhân vật & Keyframe):** `gemini-3.1-flash-image-preview`, `flux-pro`, `midjourney` qua OpenRouter hoặc Yunwu
 
 ---
 

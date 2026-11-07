@@ -5,7 +5,7 @@ import {parse, stringify} from 'yaml';
 const SECTION_FIELDS = {
   llm: ['model_provider', 'model', 'base_url'],
   image: ['model', 'base_url'],
-  video: ['model', 'base_url'],
+  video: ['model_provider', 'model', 'base_url'],
   audio: ['model_provider', 'model', 'base_url'],
   embedding: ['model_provider', 'model', 'base_url'],
   reranker: ['model', 'base_url'],

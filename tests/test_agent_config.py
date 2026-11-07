@@ -124,5 +124,40 @@ class AgentConfigTests(unittest.TestCase):
                         image_num_candidates(tmp)
 
 
+    def test_video_generator_builds_seedance_for_yunwu_seedance_model(self):
+        from agent_runtime.vimax_adapters import _build_video_generator
+        from tools.video_generator_doubao_seedance_yunwu_api import VideoGeneratorDoubaoSeedanceYunwuAPI
+        with tempfile.TemporaryDirectory() as tmp:
+            config_dir = Path(tmp) / "configs"
+            config_dir.mkdir()
+            (config_dir / "agent.local.yaml").write_text(yaml.safe_dump({
+                "video": {
+                    "model": "doubao-seedance-1-0-lite-t2v-250428",
+                    "base_url": "https://yunwu.ai/volc/v1",
+                    "api_key": "test-key"
+                }
+            }), encoding="utf-8")
+            with patch("agent_runtime.config.load_agent_config", side_effect=lambda w=".": yaml.safe_load((config_dir / "agent.local.yaml").read_text(encoding="utf-8"))):
+                gen = _build_video_generator()
+                self.assertIsInstance(gen, VideoGeneratorDoubaoSeedanceYunwuAPI)
+                self.assertEqual(gen.t2v_model, "doubao-seedance-1-0-lite-t2v-250428")
+                self.assertEqual(gen.ff2v_model, "doubao-seedance-1-0-lite-i2v-250428")
+                self.assertEqual(gen.base_url, "https://yunwu.ai/volc/v1")
+
+    def test_video_provider_respects_explicit_model_provider(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config_dir = Path(tmp) / "configs"
+            config_dir.mkdir()
+            (config_dir / "agent.local.yaml").write_text(yaml.safe_dump({
+                "video": {
+                    "model_provider": "seedance",
+                    "model": "seedance-2.0-fast",
+                    "base_url": "https://yunwu.ai",
+                    "api_key": "test-key"
+                }
+            }), encoding="utf-8")
+            self.assertEqual(video_provider(tmp), "seedance")
+
+
 if __name__ == "__main__":
     unittest.main()
