@@ -137,3 +137,33 @@ def video_provider(workspace_root: str | Path = ".") -> str:
     the matching implementation.
     """
     return api_provider_from_base_url(video_base_url(workspace_root))
+
+DEFAULT_AUDIO_MODEL_PROVIDER = "elevenlabs"
+DEFAULT_AUDIO_MODEL = "eleven_multilingual_v2"
+DEFAULT_AUDIO_BASE_URL = "https://api.elevenlabs.io/v1"
+DEFAULT_AUDIO_VOICE = "21m00Tcm4TlvDq8ikWAM"
+
+def audio_model_provider(workspace_root: str | Path = ".") -> str:
+    return config_value("audio", "model_provider", ["VIMAX_AUDIO_PROVIDER"], DEFAULT_AUDIO_MODEL_PROVIDER, workspace_root)
+
+def audio_model(workspace_root: str | Path = ".") -> str:
+    return config_value("audio", "model", ["VIMAX_AUDIO_MODEL"], DEFAULT_AUDIO_MODEL, workspace_root)
+
+def audio_base_url(workspace_root: str | Path = ".") -> str:
+    return config_value("audio", "base_url", ["VIMAX_AUDIO_BASE_URL"], DEFAULT_AUDIO_BASE_URL, workspace_root)
+
+def audio_api_key(workspace_root: str | Path = ".") -> str:
+    return config_value("audio", "api_key", ["VIMAX_AUDIO_API_KEY", "ELEVENLABS_API_KEY"], "", workspace_root)
+
+def audio_voice(workspace_root: str | Path = ".") -> str:
+    return config_value("audio", "voice", ["VIMAX_AUDIO_VOICE"], DEFAULT_AUDIO_VOICE, workspace_root)
+
+def audio_bgm_file(workspace_root: str | Path = ".") -> str:
+    return config_value("audio", "bgm_file", ["VIMAX_BGM_FILE"], "", workspace_root)
+
+def audio_bgm_volume(workspace_root: str | Path = ".") -> float:
+    val = config_value("audio", "bgm_volume", ["VIMAX_BGM_VOLUME"], "0.15", workspace_root)
+    try:
+        return float(val)
+    except (ValueError, TypeError):
+        return 0.15

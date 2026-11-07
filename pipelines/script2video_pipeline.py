@@ -325,6 +325,47 @@ class Script2VideoPipeline:
             print(f"☑️ Concatenated videos, saved to {final_video_path}.")
             _emit_render_progress(progress, "concat_done", "Final video concatenated", {"path": final_video_path})
 
+            # --- AUDIO SYNTHESIS & BGM MIXING ---
+            try:
+                from utils.audio import synthesize_speech, extract_speech_from_shot, mix_video_and_audio
+                from agent_runtime.config import (
+                    audio_model_provider, audio_model, audio_base_url,
+                    audio_api_key, audio_voice, audio_bgm_file, audio_bgm_volume
+                )
+
+                speech_lines = []
+                for sd in shot_descriptions:
+                    spoken = extract_speech_from_shot(getattr(sd, 'audio_desc', ''), getattr(sd, 'visual_desc', ''))
+                    if spoken:
+                        speech_lines.append(spoken)
+
+                if speech_lines:
+                    _emit_render_progress(progress, "audio_start", "Generating voiceover with ElevenLabs / TTS", {"line_count": len(speech_lines)})
+                    full_speech = " ".join(speech_lines)
+                    voice_file = os.path.join(self.working_dir, "voiceover.mp3")
+                    await synthesize_speech(
+                        text=full_speech,
+                        output_path=voice_file,
+                        provider=audio_model_provider(),
+                        api_key=audio_api_key(),
+                        voice=audio_voice(),
+                        model=audio_model(),
+                        base_url=audio_base_url(),
+                    )
+                    bgm = audio_bgm_file()
+                    vol = audio_bgm_volume()
+                    _emit_render_progress(progress, "audio_mix", "Mixing voiceover & BGM into video")
+                    mix_video_and_audio(
+                        video_path=final_video_path,
+                        output_path=final_video_path,
+                        voice_path=voice_file,
+                        bgm_path=bgm if bgm and os.path.exists(bgm) else None,
+                        bgm_volume=vol
+                    )
+                    _emit_render_progress(progress, "audio_done", "Voiceover and music mixed successfully")
+            except Exception as e:
+                print(f"⚠️ Audio synthesis/mixing warning: {e}")
+
         _emit_render_progress(progress, "render_done", "Script2video render complete", {"final_video_path": final_video_path})
         return final_video_path
 

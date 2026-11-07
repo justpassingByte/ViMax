@@ -19,7 +19,7 @@ export type ConfigSection = {
 };
 
 export type AgentConfig = {
-  sections: Record<'llm' | 'image' | 'video' | 'embedding' | 'reranker', ConfigSection>;
+  sections: Record<'llm' | 'image' | 'video' | 'audio' | 'embedding' | 'reranker', ConfigSection>;
 };
 
 export type Artifact = {

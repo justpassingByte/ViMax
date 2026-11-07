@@ -7,6 +7,15 @@ llm:
   base_url: <YOUR_LLM_BASE_URL>
   api_key: ''
 
+audio:
+  model_provider: elevenlabs
+  model: eleven_multilingual_v2
+  base_url: https://api.elevenlabs.io/v1
+  api_key: ''
+  voice: 21m00Tcm4TlvDq8ikWAM
+  bgm_file: ''
+  bgm_volume: 0.15
+
 image:
   model: <YOUR_IMAGE_MODEL>
   base_url: <YOUR_IMAGE_BASE_URL>

@@ -720,6 +720,7 @@ function SlashCommandMenu({matches, contextPercent, onSelect}: {matches: SlashCo
 
 const CONFIG_SECTIONS: Array<{key: keyof AgentConfig['sections']; title: string; description: string}> = [
   {key: 'llm', title: 'Agent LLM', description: 'Planning, tool selection, and conversation'},
+  {key: 'audio', title: 'Voiceover & Audio', description: 'ElevenLabs or Edge-TTS narration & dialogue'},
   {key: 'image', title: 'Image generation', description: 'Characters, keyframes, and shot frames'},
   {key: 'video', title: 'Video generation', description: 'Shot clips and final video'},
   {key: 'embedding', title: 'Embedding', description: 'Optional novel retrieval'},
@@ -783,8 +784,8 @@ function SettingsView({locale, t}: {locale: Locale; t: (typeof translations)[Loc
           <ConfigSectionEditor
             key={definition.key}
             definition={{
-              title: definition.key === 'llm' ? t.sectionLlmTitle : definition.key === 'image' ? t.sectionImageTitle : definition.key === 'video' ? t.sectionVideoTitle : definition.key === 'embedding' ? t.sectionEmbeddingTitle : t.sectionRerankerTitle,
-              description: definition.key === 'llm' ? t.sectionLlmDesc : definition.key === 'image' ? t.sectionImageDesc : definition.key === 'video' ? t.sectionVideoDesc : definition.key === 'embedding' ? t.sectionEmbeddingDesc : t.sectionRerankerDesc,
+              title: definition.key === 'llm' ? t.sectionLlmTitle : definition.key === 'audio' ? t.sectionAudioTitle : definition.key === 'image' ? t.sectionImageTitle : definition.key === 'video' ? t.sectionVideoTitle : definition.key === 'embedding' ? t.sectionEmbeddingTitle : t.sectionRerankerTitle,
+              description: definition.key === 'llm' ? t.sectionLlmDesc : definition.key === 'audio' ? t.sectionAudioDesc : definition.key === 'image' ? t.sectionImageDesc : definition.key === 'video' ? t.sectionVideoDesc : definition.key === 'embedding' ? t.sectionEmbeddingDesc : t.sectionRerankerDesc,
             }}
             value={config.sections[definition.key]}
             onChange={(field, value) => update(definition.key, field, value)}
