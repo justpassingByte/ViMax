@@ -29,6 +29,7 @@ from pipelines.novel2movie_pipeline import Novel2MoviePipeline
 from pipelines.idea2video_pipeline import Idea2VideoPipeline
 from pipelines.script2video_pipeline import Script2VideoPipeline
 from tools.image_generator_nanobanana_yunwu_api import ImageGeneratorNanobananaYunwuAPI
+from tools.image_generator_doubao_seedream_yunwu_api import ImageGeneratorDoubaoSeedreamYunwuAPI
 from tools.image_generator_openrouter_api import ImageGeneratorOpenRouterAPI
 from tools.reranker_bge_silicon_api import RerankerBgeSiliconapi
 from tools.video_generator_openrouter_api import VideoGeneratorOpenRouterAPI
@@ -582,7 +583,11 @@ def _build_chat_model() -> Any:
     )
 
 
-def _build_image_generator() -> ImageGeneratorNanobananaYunwuAPI | ImageGeneratorOpenRouterAPI:
+def _build_image_generator() -> (
+    ImageGeneratorNanobananaYunwuAPI
+    | ImageGeneratorOpenRouterAPI
+    | ImageGeneratorDoubaoSeedreamYunwuAPI
+):
     api_key = image_api_key()
     if not api_key:
         raise RuntimeError("VIMAX_IMAGE_API_KEY, VIMAX_LLM_API_KEY, or configs/agent.local.yaml image/llm api_key is required for image generation")
@@ -590,6 +595,8 @@ def _build_image_generator() -> ImageGeneratorNanobananaYunwuAPI | ImageGenerato
     base_url = image_base_url()
     if api_provider_from_base_url(base_url) == "openrouter":
         return ImageGeneratorOpenRouterAPI(api_key=api_key, model=model, base_url=base_url)
+    if "seedream" in model.lower() or "doubao" in model.lower():
+        return ImageGeneratorDoubaoSeedreamYunwuAPI(api_key=api_key, model=model)
     return ImageGeneratorNanobananaYunwuAPI(api_key=api_key, model=model, base_url=base_url)
 
 

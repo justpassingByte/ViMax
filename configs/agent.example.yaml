@@ -17,6 +17,21 @@ audio:
   bgm_volume: 0.15              # Âm lượng nhạc nền
 
 image:
+  # Cấu hình tạo ảnh nhân vật & Keyframe cho video. Có 3 lựa chọn hàng đầu:
+  # Lựa chọn 1 (KHUYÊN DÙNG vì siêu nhanh ~2-4s/ảnh, tỉ lệ 16:9 điện ảnh): Google Gemini Flash Image qua Yunwu
+  #   model: gemini-3.1-flash-image-preview   # hoặc gemini-2.5-flash-image-preview
+  #   base_url: https://yunwu.ai
+  #   api_key: <YUNWU_API_KEY>                # (Dùng chung key với LLM và Video)
+  #
+  # Lựa chọn 2 (Đẹp nhất cho nhân vật & chân thực): FLUX qua OpenRouter
+  #   model: black-forest-labs/flux-1.1-pro  # hoặc openai/gpt-image-2
+  #   base_url: https://openrouter.ai/api/v1
+  #   api_key: <OPENROUTER_API_KEY>
+  #
+  # Lựa chọn 3 (Đồng bộ ByteDance với Seedance): Doubao SeaDream qua Yunwu
+  #   model: doubao-seedream-4-0-250828
+  #   base_url: https://yunwu.ai
+  #   api_key: <YUNWU_API_KEY>
   model: <YOUR_IMAGE_MODEL>
   base_url: <YOUR_IMAGE_BASE_URL>
   api_key: ''

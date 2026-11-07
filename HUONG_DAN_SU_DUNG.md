@@ -42,6 +42,27 @@ Tốc độ tạo video thường là nút thắt cổ chai lớn nhất khi là
   * `base_url: https://openrouter.ai/api/v1`
   * `api_key: <Key_OpenRouter_Cua_Ban>`
 
+### 🎨 Cấu hình Tạo Ảnh (Image) - Nhân Vật & Khung Hình Chính (Keyframe):
+Trong ViMax, tạo ảnh đảm nhận 2 nhiệm vụ cốt lõi:
+1. **Thiết kế nhân vật (Character Sheet):** Tạo hình ảnh gốc để AI giữ chuẩn khuôn mặt, trang phục nhân vật suốt cả phim.
+2. **Khung hình chính (Keyframe):** Tạo các ảnh 16:9 sắc nét cho từng cảnh quay trước khi chuyển cho model video tạo chuyển động.
+
+**Các model khuyên dùng:**
+* **Lựa chọn 1 (KHUYÊN DÙNG - Nhanh nhất & Rẻ nhất): Google Gemini Flash Image qua Yunwu**
+  * `model: gemini-3.1-flash-image-preview` (hoặc `gemini-2.5-flash-image-preview`)
+  * `base_url: https://yunwu.ai`
+  * `api_key: <Key_Yunwu_Cua_Ban>` *(Dùng chung 1 key với LLM và Seedance video!)*
+  * Tốc độ: Cực nhanh, chỉ **~2 - 4 giây/ảnh**.
+* **Lựa chọn 2 (Đẹp nhất cho nhân vật & chân thực): FLUX qua OpenRouter**
+  * `model: black-forest-labs/flux-1.1-pro` (hoặc `black-forest-labs/flux-schnell`, `openai/gpt-image-2`)
+  * `base_url: https://openrouter.ai/api/v1`
+  * `api_key: <Key_OpenRouter_Cua_Ban>`
+  * Chi tiết khuôn mặt nhân vật, ánh sáng điện ảnh, nếp gấp trang phục hoàn hảo.
+* **Lựa chọn 3 (Đồng bộ ByteDance cùng Seedance): Doubao SeaDream qua Yunwu**
+  * `model: doubao-seedream-4-0-250828`
+  * `base_url: https://yunwu.ai`
+  * `api_key: <Key_Yunwu_Cua_Ban>`
+
 ### 🎙️ Cấu hình Âm thanh & Lồng tiếng (ElevenLabs / Edge-TTS)
 * **Nếu dùng ElevenLabs (Đẳng cấp điện ảnh - Khuyên dùng):**
   * `model_provider: elevenlabs`
@@ -57,9 +78,8 @@ Tốc độ tạo video thường là nút thắt cổ chai lớn nhất khi là
   * `bgm_file: 'C:/duong_dan_den_nhac.mp3'` (để trống nếu không dùng)
   * `bgm_volume: 0.15` (âm lượng nhỏ vừa phải để làm nền cho giọng nói)
 
-### 🤖 Các Model khác:
-* **LLM (Biên kịch & Đạo diễn):** `gpt-4o-mini`, `deepseek-chat`, hoặc `gemini-2.5-flash`
-* **Image (Tạo ảnh nhân vật & Keyframe):** `gemini-3.1-flash-image-preview`, `flux-pro`, `midjourney` qua OpenRouter hoặc Yunwu
+### 🤖 LLM (Biên kịch & Đạo diễn):
+* `gpt-4o-mini`, `deepseek-chat`, hoặc `gemini-2.5-flash`
 
 ---
 
