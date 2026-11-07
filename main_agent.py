@@ -7,6 +7,23 @@ import sys
 from typing import Any, Iterable
 from uuid import uuid4
 
+# Ensure UTF-8 streams on Windows to prevent charmap encoding errors
+if sys.stdout and hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+if sys.stderr and hasattr(sys.stderr, "reconfigure"):
+    try:
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+if sys.stdin and hasattr(sys.stdin, "reconfigure"):
+    try:
+        sys.stdin.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 ORIGINAL_STDOUT = sys.stdout
 
 
@@ -42,7 +59,10 @@ def load_session_index():
 def print_event(event: dict[str, Any], *, jsonl: bool) -> None:
     out = event_stdout()
     if jsonl:
-        print(json.dumps(event, ensure_ascii=False, default=str), file=out, flush=True)
+        try:
+            print(json.dumps(event, ensure_ascii=False, default=str), file=out, flush=True)
+        except UnicodeEncodeError:
+            print(json.dumps(event, ensure_ascii=True, default=str), file=out, flush=True)
         return
     event_type = event.get("type")
     if event_type == "turn":

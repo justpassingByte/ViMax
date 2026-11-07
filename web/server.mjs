@@ -151,7 +151,11 @@ async function startAgent({newSession, sessionId, projectName = ''}) {
   activeSessionId = sessionId;
   const child = spawn(command, [...args, 'main_agent.py', '--jsonl', '--stdin-repl', ...sessionArgs], {
     cwd: repoRoot,
-    env: process.env,
+    env: {
+      ...process.env,
+      PYTHONIOENCODING: 'utf-8',
+      PYTHONUTF8: '1',
+    },
     stdio: ['pipe', 'pipe', 'pipe'],
   });
   agentProcess = child;

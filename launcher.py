@@ -26,6 +26,8 @@ def main():
     node_cmd = bundled_node if os.path.exists(bundled_node) else 'node'
     
     env = os.environ.copy()
+    env['PYTHONIOENCODING'] = 'utf-8'
+    env['PYTHONUTF8'] = '1'
     if os.path.exists(bundled_python):
         env['VIMAX_PYTHON_CMD'] = bundled_python
 
