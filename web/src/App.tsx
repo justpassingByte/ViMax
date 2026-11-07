@@ -744,12 +744,16 @@ function SettingsView({locale, t}: {locale: Locale; t: (typeof translations)[Loc
 
   function update(section: keyof AgentConfig['sections'], field: keyof ConfigSection, value: string) {
     setStatus('');
-    setConfig((current) => current ? {
-      sections: {
-        ...current.sections,
-        [section]: {...current.sections[section], [field]: value},
-      },
-    } : current);
+    setConfig((current) => {
+      if (!current) return current;
+      const existing = current.sections[section] || {model: '', base_url: '', api_key: '', has_api_key: false};
+      return {
+        sections: {
+          ...current.sections,
+          [section]: {...existing, [field]: value},
+        },
+      };
+    });
   }
 
   async function save() {
@@ -800,21 +804,22 @@ function SettingsView({locale, t}: {locale: Locale; t: (typeof translations)[Loc
 function ConfigSectionEditor({definition, value, onChange, t}: {
   t: (typeof translations)[Locale];
   definition: {title: string; description: string};
-  value: ConfigSection;
+  value?: ConfigSection;
   onChange: (field: keyof ConfigSection, value: string) => void;
 }) {
+  const current = value || {model: '', base_url: '', api_key: '', has_api_key: false};
   return (
     <section className="config-section">
       <header><h2>{definition.title}</h2><p>{definition.description}</p></header>
       <div className="config-fields">
-        {value.model_provider !== undefined && (
-          <label><span>{t.modelProvider}</span><input value={value.model_provider} onChange={(event) => onChange('model_provider', event.target.value)} /></label>
+        {current.model_provider !== undefined && (
+          <label><span>{t.modelProvider}</span><input value={current.model_provider} onChange={(event) => onChange('model_provider', event.target.value)} /></label>
         )}
-        <label><span>{t.model}</span><input value={value.model} onChange={(event) => onChange('model', event.target.value)} /></label>
-        <label className="config-field-wide"><span>{t.baseUrl}</span><input value={value.base_url} onChange={(event) => onChange('base_url', event.target.value)} inputMode="url" /></label>
+        <label><span>{t.model}</span><input value={current.model} onChange={(event) => onChange('model', event.target.value)} /></label>
+        <label className="config-field-wide"><span>{t.baseUrl}</span><input value={current.base_url} onChange={(event) => onChange('base_url', event.target.value)} inputMode="url" /></label>
         <label className="config-field-wide">
-          <span>{t.apiKey} <i className={value.has_api_key ? 'is-configured' : ''}>{value.has_api_key ? t.configured : t.notConfigured}</i></span>
-          <input type="password" value={value.api_key} onChange={(event) => onChange('api_key', event.target.value)} placeholder={value.has_api_key ? t.apiKeyPlaceholderConfigured : t.apiKeyPlaceholderEmpty} autoComplete="off" />
+          <span>{t.apiKey} <i className={current.has_api_key ? 'is-configured' : ''}>{current.has_api_key ? t.configured : t.notConfigured}</i></span>
+          <input type="password" value={current.api_key} onChange={(event) => onChange('api_key', event.target.value)} placeholder={current.has_api_key ? t.apiKeyPlaceholderConfigured : t.apiKeyPlaceholderEmpty} autoComplete="off" />
         </label>
       </div>
     </section>
