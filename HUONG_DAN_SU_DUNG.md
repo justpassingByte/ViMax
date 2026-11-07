@@ -63,20 +63,34 @@ Trong ViMax, tạo ảnh đảm nhận 2 nhiệm vụ cốt lõi:
   * `base_url: https://yunwu.ai`
   * `api_key: <Key_Yunwu_Cua_Ban>`
 
-### 🎙️ Cấu hình Âm thanh & Lồng tiếng (ElevenLabs / Edge-TTS)
-* **Nếu dùng ElevenLabs (Đẳng cấp điện ảnh - Khuyên dùng):**
-  * `model_provider: elevenlabs`
-  * `model: eleven_multilingual_v2` (model đa ngôn ngữ hỗ trợ tiếng Việt cực kỳ truyền cảm, có nhịp thở, cảm xúc)
-  * `base_url: https://api.elevenlabs.io/v1`
-  * `api_key: 'sk_...'` (Key tài khoản ElevenLabs của bạn)
-  * `voice: 21m00Tcm4TlvDq8ikWAM` (Voice ID trên ElevenLabs - bạn có thể tạo hoặc chọn bất kỳ giọng diễn viên nào trên thư viện Voice Library của ElevenLabs rồi dán Voice ID vào đây)
-* **Nếu dùng Edge-TTS (Miễn phí):**
-  * `model_provider: edge-tts`
-  * `voice: vi-VN-NamMinhNeural` (Nam) hoặc `vi-VN-HoaiMyNeural` (Nữ)
-  * `api_key: ''` (để trống vì không cần key)
-* **Nhạc nền BGM:**
-  * `bgm_file: 'C:/duong_dan_den_nhac.mp3'` (để trống nếu không dùng)
-  * `bgm_volume: 0.15` (âm lượng nhỏ vừa phải để làm nền cho giọng nói)
+### 🎙️ Cấu hình Lồng Tiếng Đa Nhân Vật & Nhạc Nền (Multi-character Audio):
+Để bộ phim có đối thoại chân thực giữa các nhân vật (không phải 1 giọng độc thoại nhàm chán), ViMax hỗ trợ **phân vai nhiều giọng đọc tự động**:
+1. **Tự động nhận diện người nói:** Bóc tách nhân vật nào đang nói ở từng shot (`<Alice> says: "..."` hoặc `[Speaker] Alice: ...`).
+2. **Khớp giọng theo nhân vật:** Gọi đúng Voice ID tương ứng của từng diễn viên.
+3. **Tự động phân biệt giới tính:** Nếu nhân vật chưa khai báo Voice riêng, ViMax sẽ đọc hồ sơ nhân vật để tự động cấp giọng Nữ cho nhân vật nữ và giọng Nam cho nhân vật nam!
+4. **Khớp chuẩn Timeline video:** Mỗi câu thoại phát đúng tại thời điểm cú máy của nhân vật đó xuất hiện trên màn hình, hòa âm cùng nhạc nền BGM (tự động giảm nhỏ nhạc khi có tiếng nói).
+
+**Cách cấu hình trong file `configs/agent.local.yaml`:**
+```yaml
+audio:
+  model_provider: elevenlabs    # elevenlabs hoặc edge-tts
+  model: eleven_multilingual_v2
+  base_url: https://api.elevenlabs.io/v1
+  api_key: 'sk_...'
+  voice: 21m00Tcm4TlvDq8ikWAM   # Giọng mặc định / Người dẫn chuyện
+
+  # Phân vai giọng riêng cho từng nhân vật:
+  character_voices:
+    Alice: EXAVITQu4vr4xnSDxMaL     # Giọng nữ chính (Bella trên ElevenLabs)
+    Bob: pNInz6obpgDQGcFmaJgB       # Giọng nam chính (Adam trên ElevenLabs)
+    Narrator: 21m00Tcm4TlvDq8ikWAM   # Giọng dẫn chuyện
+    female: EXAVITQu4vr4xnSDxMaL    # Giọng nữ mặc định
+    male: pNInz6obpgDQGcFmaJgB      # Giọng nam mặc định
+
+  bgm_file: 'C:/nhac_nen.mp3'       # File nhạc nền (nếu có)
+  bgm_volume: 0.15                  # Âm lượng nhạc nền
+```
+*(Nếu dùng **Edge-TTS miễn phí**, bạn chỉ cần đổi Voice ID thành `vi-VN-HoaiMyNeural` cho giọng nữ và `vi-VN-NamMinhNeural` cho giọng nam).*
 
 ### 🤖 LLM (Biên kịch & Đạo diễn):
 * `gpt-4o-mini`, `deepseek-chat`, hoặc `gemini-2.5-flash`
@@ -95,7 +109,7 @@ Trong ViMax, tạo ảnh đảm nhận 2 nhiệm vụ cốt lõi:
    - Trích xuất danh sách nhân vật (tính cách, diện mạo) để giữ đồng nhất khuôn mặt xuyên suốt phim.
    - Tạo kịch bản phân cảnh cho từng chương.
    - Lập danh sách cú máy (Storyboard).
-   - Render hình ảnh, sinh clip video và tự động lồng tiếng + ghép nhạc nền vào phim hoàn chỉnh!
+   - Render hình ảnh, sinh clip video và tự động lồng tiếng đa nhân vật + ghép nhạc nền vào phim hoàn chỉnh!
 
 ### 📝 Quy trình 2: Dựng Phim Từ Kịch Bản Có Sẵn (Script2Video)
 1. Dán kịch bản vào khung chat và nhắn lệnh:

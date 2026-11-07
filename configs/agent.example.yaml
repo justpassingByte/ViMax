@@ -12,9 +12,19 @@ audio:
   model: eleven_multilingual_v2 # hoặc vi-VN-NamMinhNeural (Edge-TTS)
   base_url: https://api.elevenlabs.io/v1
   api_key: ''                   # ElevenLabs API key (Edge-TTS để trống)
-  voice: 21m00Tcm4TlvDq8ikWAM   # ElevenLabs Voice ID hoặc tên giọng Edge-TTS
+  voice: 21m00Tcm4TlvDq8ikWAM   # Giọng mặc định / Người dẫn chuyện (Narrator)
   bgm_file: ''                  # Đường dẫn file nhạc nền mp3 (nếu có)
   bgm_volume: 0.15              # Âm lượng nhạc nền
+
+  # Phân vai nhiều giọng đọc cho nhiều nhân vật (Multi-character Voices):
+  # ViMax tự động bóc tách nhân vật nào đang nói trong từng shot để gán đúng giọng!
+  # Nếu dùng ElevenLabs: điền Voice ID. Nếu dùng Edge-TTS: điền tên giọng (vi-VN-HoaiMyNeural, vi-VN-NamMinhNeural)
+  character_voices:
+    Alice: EXAVITQu4vr4xnSDxMaL     # Nữ chính (Bella)
+    Bob: pNInz6obpgDQGcFmaJgB       # Nam chính (Adam)
+    Narrator: 21m00Tcm4TlvDq8ikWAM   # Dẫn chuyện (Rachel)
+    female: EXAVITQu4vr4xnSDxMaL    # Giọng nữ mặc định (nếu nhân vật chưa khai báo)
+    male: pNInz6obpgDQGcFmaJgB      # Giọng nam mặc định (nếu nhân vật chưa khai báo)
 
 image:
   # Cấu hình tạo ảnh nhân vật & Keyframe cho video. Có 3 lựa chọn hàng đầu:

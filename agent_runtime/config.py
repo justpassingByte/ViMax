@@ -165,3 +165,11 @@ def audio_bgm_volume(workspace_root: str | Path = ".") -> float:
         return float(val)
     except (ValueError, TypeError):
         return 0.15
+
+def audio_character_voices(workspace_root: str | Path = ".") -> dict[str, str]:
+    section = load_agent_config(workspace_root).get("audio", {})
+    if isinstance(section, dict):
+        cv = section.get("character_voices", {})
+        if isinstance(cv, dict):
+            return {str(k).strip(): str(v).strip() for k, v in cv.items()}
+    return {}

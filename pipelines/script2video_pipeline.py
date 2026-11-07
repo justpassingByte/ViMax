@@ -325,44 +325,67 @@ class Script2VideoPipeline:
             print(f"☑️ Concatenated videos, saved to {final_video_path}.")
             _emit_render_progress(progress, "concat_done", "Final video concatenated", {"path": final_video_path})
 
-            # --- AUDIO SYNTHESIS & BGM MIXING ---
+            # --- MULTI-CHARACTER AUDIO SYNTHESIS & BGM MIXING ---
             try:
-                from utils.audio import synthesize_speech, extract_speech_from_shot, mix_video_and_audio
+                from utils.audio import (
+                    synthesize_speech,
+                    extract_dialogue_from_shot,
+                    resolve_voice_for_speaker,
+                    mix_multitrack_video_and_audio,
+                )
                 from agent_runtime.config import (
                     audio_model_provider, audio_model, audio_base_url,
-                    audio_api_key, audio_voice, audio_bgm_file, audio_bgm_volume
+                    audio_api_key, audio_voice, audio_bgm_file, audio_bgm_volume,
+                    audio_character_voices
                 )
 
-                speech_lines = []
-                for sd in shot_descriptions:
-                    spoken = extract_speech_from_shot(getattr(sd, 'audio_desc', ''), getattr(sd, 'visual_desc', ''))
-                    if spoken:
-                        speech_lines.append(spoken)
+                char_voice_map = audio_character_voices()
+                shot_durations = [clip.duration for clip in video_clips]
+                current_offset = 0.0
+                speech_segments = []
 
-                if speech_lines:
-                    _emit_render_progress(progress, "audio_start", "Generating voiceover with ElevenLabs / TTS", {"line_count": len(speech_lines)})
-                    full_speech = " ".join(speech_lines)
-                    voice_file = os.path.join(self.working_dir, "voiceover.mp3")
-                    await synthesize_speech(
-                        text=full_speech,
-                        output_path=voice_file,
-                        provider=audio_model_provider(),
-                        api_key=audio_api_key(),
-                        voice=audio_voice(),
-                        model=audio_model(),
-                        base_url=audio_base_url(),
+                _emit_render_progress(progress, "audio_start", "Processing multi-character voiceovers")
+
+                for i, sd in enumerate(shot_descriptions):
+                    speaker, spoken = extract_dialogue_from_shot(
+                        getattr(sd, 'audio_desc', ''),
+                        getattr(sd, 'visual_desc', '')
                     )
+                    if spoken:
+                        voice_to_use = resolve_voice_for_speaker(
+                            speaker=speaker,
+                            characters=characters,
+                            provider=audio_model_provider(),
+                            default_voice=audio_voice(),
+                            character_voices=char_voice_map,
+                        )
+                        shot_voice_file = os.path.join(self.working_dir, "shots", f"{sd.idx}", "speech.mp3")
+                        await synthesize_speech(
+                            text=spoken,
+                            output_path=shot_voice_file,
+                            provider=audio_model_provider(),
+                            api_key=audio_api_key(),
+                            voice=voice_to_use,
+                            model=audio_model(),
+                            base_url=audio_base_url(),
+                        )
+                        speech_segments.append((current_offset, shot_voice_file))
+
+                    shot_len = shot_durations[i] if i < len(shot_durations) else 5.0
+                    current_offset += shot_len
+
+                if speech_segments or audio_bgm_file():
                     bgm = audio_bgm_file()
                     vol = audio_bgm_volume()
-                    _emit_render_progress(progress, "audio_mix", "Mixing voiceover & BGM into video")
-                    mix_video_and_audio(
+                    _emit_render_progress(progress, "audio_mix", "Mixing multi-character voiceover & BGM into video", {"dialogue_count": len(speech_segments)})
+                    mix_multitrack_video_and_audio(
                         video_path=final_video_path,
                         output_path=final_video_path,
-                        voice_path=voice_file,
+                        speech_segments=speech_segments,
                         bgm_path=bgm if bgm and os.path.exists(bgm) else None,
                         bgm_volume=vol
                     )
-                    _emit_render_progress(progress, "audio_done", "Voiceover and music mixed successfully")
+                    _emit_render_progress(progress, "audio_done", "Multi-character voiceover and music mixed successfully")
             except Exception as e:
                 print(f"⚠️ Audio synthesis/mixing warning: {e}")
 
