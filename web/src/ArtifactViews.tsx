@@ -19,8 +19,10 @@ import {
   type StoryboardPreview,
 } from './artifactPresentation';
 import type {Artifact, JsonValue, SessionSummary} from './types';
+import {translations, type Locale} from './i18n';
 
-export function ArtifactsView({session, artifacts}: {session?: SessionSummary; artifacts: Artifact[]}) {
+export function ArtifactsView({session, artifacts, locale = 'vi'}: {session?: SessionSummary; artifacts: Artifact[]; locale?: Locale}) {
+  const t = translations[locale];
   const jsonArtifacts = useMemo(
     () => artifacts.filter(isJsonArtifact).sort((left, right) => left.path.localeCompare(right.path, undefined, {numeric: true})),
     [artifacts],
@@ -63,8 +65,8 @@ export function ArtifactsView({session, artifacts}: {session?: SessionSummary; a
   return (
     <section className="artifacts-view">
       <header>
-        <div><span>Generated files</span><h1>{session ? projectTitle(session) : 'Artifacts'}</h1></div>
-        <span className="artifact-file-count">{jsonArtifacts.length} documents · {mediaArtifacts.length} visuals</span>
+        <div><span>{t.generatedFiles}</span><h1>{session ? projectTitle(session) : t.artifacts}</h1></div>
+        <span className="artifact-file-count">{jsonArtifacts.length} {t.documents.toLowerCase()} · {mediaArtifacts.length} {t.visuals.toLowerCase()}</span>
       </header>
       <div className="artifact-view-switcher" role="tablist" aria-label="Artifact type">
         {(['all', 'documents', 'visuals'] as const).map((option) => (
@@ -75,23 +77,23 @@ export function ArtifactsView({session, artifacts}: {session?: SessionSummary; a
             className={view === option ? 'is-selected' : ''}
             onClick={() => setView(option)}
           >
-            {option === 'all' ? 'All' : option === 'documents' ? 'Documents' : 'Visuals'}
+            {option === 'all' ? t.all : option === 'documents' ? t.documents : t.visuals}
           </button>
         ))}
       </div>
       {!session ? (
-        <ArtifactsEmpty title="Select a project" detail="Project files appear here after planning" />
+        <ArtifactsEmpty title={t.selectProjectFirst} detail={t.projectFilesNotice} />
       ) : (
         <>
           {(view === 'all' || view === 'documents') && (
             <section className="artifact-content-section">
-              {view === 'all' && <SectionHeading title="Project artifacts" detail="Documents with related visuals" />}
+              {view === 'all' && <SectionHeading title={t.projectArtifacts} detail={t.docsWithVisuals} />}
               {jsonArtifacts.length === 0 ? (
-                <ArtifactsEmpty title="No structured files yet" detail="JSON artifacts appear here after planning" />
+                <ArtifactsEmpty title={t.noStructuredFiles} detail={t.jsonArtifactsNotice} />
               ) : (
                 <div className="artifact-browser">
                   <nav className="artifact-document-list" aria-label="Generated JSON files">
-                    <div className="artifact-document-list-title"><span>Documents</span><span>{jsonArtifacts.length}</span></div>
+                    <div className="artifact-document-list-title"><span>{t.documents}</span><span>{jsonArtifacts.length}</span></div>
                     {jsonArtifacts.map((artifact) => (
                       <button
                         key={artifact.path}
@@ -232,7 +234,8 @@ function SectionHeading({title, detail}: {title: string; detail: string}) {
   return <header className="artifact-section-heading"><h2>{title}</h2><span>{detail}</span></header>;
 }
 
-export function StoryboardPanel({open, artifacts, activeRenderStage, onClose, onCountChange}: {
+export function StoryboardPanel({open, artifacts, activeRenderStage, onClose, onCountChange, locale = 'vi'}: {
+  locale?: Locale;
   open: boolean;
   artifacts: Artifact[];
   activeRenderStage?: string;
@@ -292,6 +295,7 @@ export function StoryboardPanel({open, artifacts, activeRenderStage, onClose, on
     [artifacts, previews.length],
   );
   const activeCheckpoint = activeRenderStage ? activeRenderCheckpoint(activeRenderStage) : undefined;
+  const t = translations[locale];
   return (
     <aside className={`storyboard-panel ${open ? 'is-open' : ''}`}>
       <header>
@@ -300,59 +304,59 @@ export function StoryboardPanel({open, artifacts, activeRenderStage, onClose, on
       </header>
       <section className="render-readiness" aria-label="Render readiness">
         <div className="render-readiness-summary">
-          <strong>{readiness.readyToRender ? 'Ready to render' : 'Planning incomplete'}</strong>
+          <strong>{readiness.readyToRender ? t.readyToRender : t.planningIncomplete}</strong>
         </div>
         <div className="render-checkpoints">
           <ReadinessCheckpoint
-            label="Storyboards"
-            detail={readiness.storyboards.count === 1 ? '1 shot' : `${readiness.storyboards.count} shots`}
+            label={t.storyboards}
+            detail={readiness.storyboards.count === 1 ? `1 ${t.shotsCount}` : `${readiness.storyboards.count} ${t.shotsCount}`}
             status={readiness.storyboards.status}
           />
           <ReadinessCheckpoint
-            label="Shot descriptions"
+            label={t.shotDescriptions}
             detail={`${readiness.shotDescriptions.count}/${readiness.shotDescriptions.expected || 0}`}
             status={readiness.shotDescriptions.status}
           />
           <ReadinessCheckpoint
-            label="Camera plans"
+            label={t.cameraPlans}
             detail={`${readiness.cameraPlans.count}/${readiness.cameraPlans.expected || 0}`}
             status={readiness.cameraPlans.status}
           />
         </div>
         <div className="render-stage-heading">
-          <span>Render</span>
-          <small>{activeRenderStage ? 'Generating' : readiness.render.finalVideo.status === 'ready' ? 'Complete' : readiness.render.started ? 'Partial' : 'Not started'}</small>
+          <span>{t.renderStage}</span>
+          <small>{activeRenderStage ? t.generating : readiness.render.finalVideo.status === 'ready' ? t.complete : readiness.render.started ? t.partial : t.notStarted}</small>
         </div>
         <div className="render-checkpoints">
           <ReadinessCheckpoint
-            label="Keyframes"
+            label={t.keyframes}
             detail={`${readiness.render.frames.count}/${readiness.render.frames.expected || 0}`}
             status={readiness.render.frames.status}
             generating={activeCheckpoint === 'frames'}
           />
           <ReadinessCheckpoint
-            label="Video clips"
+            label={t.videoClips}
             detail={`${readiness.render.clips.count}/${readiness.render.clips.expected || 0}`}
             status={readiness.render.clips.status}
             generating={activeCheckpoint === 'clips'}
           />
           <ReadinessCheckpoint
-            label="Final video"
-            detail={readiness.render.finalVideo.status === 'ready' ? 'Ready' : 'Pending'}
+            label={t.finalVideo}
+            detail={readiness.render.finalVideo.status === 'ready' ? t.ready : t.pending}
             status={readiness.render.finalVideo.status}
             generating={activeCheckpoint === 'finalVideo'}
           />
         </div>
       </section>
       <div className="storyboard-description" aria-live="polite">
-        {loading ? <span>Loading storyboard…</span> : error ? <span className="is-error">{error}</span> : current ? <p>{current.description}</p> : <span>No storyboard descriptions yet</span>}
+        {loading ? <span>{t.loadingStoryboard}</span> : error ? <span className="is-error">{error}</span> : current ? <p>{current.description}</p> : <span>{t.noStoryboardDescriptions}</span>}
       </div>
       <footer>
         <button onClick={() => setIndex((currentIndex) => Math.max(0, currentIndex - 1))} disabled={index === 0 || previews.length === 0} aria-label="Previous storyboard">
-          <ChevronUp size={17} /><span>Previous</span>
+          <ChevronUp size={17} /><span>{t.previous}</span>
         </button>
         <button onClick={() => setIndex((currentIndex) => Math.min(previews.length - 1, currentIndex + 1))} disabled={index >= previews.length - 1 || previews.length === 0} aria-label="Next storyboard">
-          <ChevronDown size={17} /><span>Next</span>
+          <ChevronDown size={17} /><span>{t.next}</span>
         </button>
       </footer>
     </aside>

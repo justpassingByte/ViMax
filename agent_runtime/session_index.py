@@ -9,6 +9,11 @@ from datetime import datetime
 from functools import wraps
 from pathlib import Path
 from typing import Any
+import threading
+import time
+import uuid
+
+_PROCESS_LOCK = threading.RLock()
 
 try:
     import fcntl
@@ -53,16 +58,17 @@ class SessionIndex:
 
     @contextmanager
     def _locked(self):
-        if fcntl is None:
-            yield
-            return
-        lock_path = self.vimax_dir / "sessions.lock"
-        with open(lock_path, "a+", encoding="utf-8") as handle:
-            fcntl.flock(handle, fcntl.LOCK_EX)
-            try:
+        with _PROCESS_LOCK:
+            if fcntl is None:
                 yield
-            finally:
-                fcntl.flock(handle, fcntl.LOCK_UN)
+                return
+            lock_path = self.vimax_dir / "sessions.lock"
+            with open(lock_path, "a+", encoding="utf-8") as handle:
+                fcntl.flock(handle, fcntl.LOCK_EX)
+                try:
+                    yield
+                finally:
+                    fcntl.flock(handle, fcntl.LOCK_UN)
 
     def load(self) -> dict[str, Any]:
         try:
@@ -82,9 +88,16 @@ class SessionIndex:
             return {"active_session_id": "", "sessions": {}}
 
     def save(self, data: dict[str, Any]) -> None:
-        tmp_path = self.sessions_path.with_name("sessions.json.tmp")
+        tmp_path = self.sessions_path.with_name(f"sessions.json.tmp.{uuid.uuid4().hex}")
         tmp_path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-        os.replace(tmp_path, self.sessions_path)
+        for attempt in range(20):
+            try:
+                os.replace(tmp_path, self.sessions_path)
+                break
+            except PermissionError:
+                if attempt == 19:
+                    raise
+                time.sleep(0.01)
 
     def active(self) -> dict[str, Any] | None:
         data = self.load()

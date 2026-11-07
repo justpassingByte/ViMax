@@ -250,7 +250,9 @@ function agentCommand() {
   if (configuredPython) return {command: configuredPython, args: []};
   const bundledUv = process.env.VIMAX_UV_CMD || path.join(process.env.HOME || '', '.local', 'bin', 'uv');
   if (bundledUv && existsSync(bundledUv)) return {command: bundledUv, args: ['run', 'python']};
-  const venvPython = path.join(repoRoot, '.venv', 'bin', 'python3');
+  const venvPython = process.platform === 'win32'
+    ? path.join(repoRoot, '.venv', 'Scripts', 'python.exe')
+    : path.join(repoRoot, '.venv', 'bin', 'python3');
   if (existsSync(venvPython)) return {command: venvPython, args: []};
   return {command: 'uv', args: ['run', 'python']};
 }

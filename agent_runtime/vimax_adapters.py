@@ -1,5 +1,12 @@
 from __future__ import annotations
 
+def _safe_relative(path: Path | str, base: Path) -> str:
+    try:
+        return str(Path(path).resolve().relative_to(base.resolve()))
+    except ValueError:
+        return str(Path(path).relative_to(base))
+
+
 import asyncio
 from datetime import datetime
 from contextlib import contextmanager, redirect_stderr, redirect_stdout
@@ -202,7 +209,7 @@ class ViMaxAdapters:
             checklist = self.session_index.artifact_checklist(session_id)
             payload = {
                 "session_id": session_id,
-                "working_dir": str(working_dir.relative_to(self.workspace_root)),
+                "working_dir": _safe_relative(working_dir, self.workspace_root),
                 "error_type": "recoverable_planning_step_failed",
                 "retryable": True,
                 "error": str(exc),
@@ -222,7 +229,7 @@ class ViMaxAdapters:
             runtime.emit_progress("Narrative planning complete", stage="completed", metadata={"ready_for_render": ready_for_render})
         payload = {
             "session_id": session_id,
-            "working_dir": str(working_dir.relative_to(self.workspace_root)),
+            "working_dir": _safe_relative(working_dir, self.workspace_root),
             "generated": generated,
             "reused": reused,
             "missing": [path for path, present in checklist.items() if not present],
@@ -270,7 +277,7 @@ class ViMaxAdapters:
         self.session_index.update_stage(session_id, "narrative_planned" if ready_for_render else "narrative_planning", "Revised structured text artifact")
         payload = {
             "session_id": session_id,
-            "working_dir": str(working_dir.relative_to(self.workspace_root)),
+            "working_dir": _safe_relative(working_dir, self.workspace_root),
             "generated": [],
             "reused": [path for path, present in checklist.items() if present],
             "revised": [target_path.relative_to(working_dir).as_posix()],
@@ -329,7 +336,7 @@ class ViMaxAdapters:
             runtime.emit_progress("Novel planning complete", stage="completed", metadata={"session_id": session_id, "ready_for_scene_render": False})
         payload = {
             "session_id": session_id,
-            "working_dir": str(working_dir.relative_to(self.workspace_root)),
+            "working_dir": _safe_relative(working_dir, self.workspace_root),
             "generated": generated,
             "reused": reused,
             "missing": missing,
@@ -365,7 +372,7 @@ class ViMaxAdapters:
                 with _suppress_pipeline_output():
                     final_video = await idea_pipeline(idea=str(session.get("idea", "")), user_requirement=str(session.get("user_requirement", "")), style=str(session.get("style", "")), quiet=True, progress=_pipeline_progress(runtime, session_id))
                 self.session_index.update_stage(session_id, "rendered", "Final video rendered")
-                payload = {"session_id": session_id, "render_mode": "idea2video", "render_started": True, "render_completed": True, "final_video_path": str(Path(final_video).relative_to(self.workspace_root)), "missing": []}
+                payload = {"session_id": session_id, "render_mode": "idea2video", "render_started": True, "render_completed": True, "final_video_path": _safe_relative(final_video, self.workspace_root), "missing": []}
                 _write_render_status(working_dir, status="rendered", payload=payload)
                 return ToolResult("vimax_render_video", True, json.dumps(payload, ensure_ascii=False, indent=2), payload)
             if _script_mode_ready(checklist):
@@ -376,7 +383,7 @@ class ViMaxAdapters:
                 with _suppress_pipeline_output():
                     final_video = await pipeline(script=script_text, user_requirement=str(session.get("user_requirement", "")), style=str(session.get("style", "")), characters=characters, quiet=True, progress=_pipeline_progress(runtime, session_id))
                 self.session_index.update_stage(session_id, "rendered", "Final video rendered")
-                payload = {"session_id": session_id, "render_mode": "script2video", "render_started": True, "render_completed": True, "final_video_path": str(Path(final_video).relative_to(self.workspace_root)), "missing": []}
+                payload = {"session_id": session_id, "render_mode": "script2video", "render_started": True, "render_completed": True, "final_video_path": _safe_relative(final_video, self.workspace_root), "missing": []}
                 _write_render_status(working_dir, status="rendered", payload=payload)
                 return ToolResult("vimax_render_video", True, json.dumps(payload, ensure_ascii=False, indent=2), payload)
             if _novel_mode_ready(checklist):
@@ -393,8 +400,8 @@ class ViMaxAdapters:
                     "render_completed": True,
                     "scene_render_completed": True,
                     "final_video_path": None,
-                    "scene_videos_dir": str(scene_videos_dir.relative_to(self.workspace_root)),
-                    "scene_video_dirs": [str(Path(path).relative_to(self.workspace_root)) for path in render_result.get("scene_video_dirs", [])],
+                    "scene_videos_dir": _safe_relative(scene_videos_dir, self.workspace_root),
+                    "scene_video_dirs": [_safe_relative(path, self.workspace_root) for path in render_result.get("scene_video_dirs", [])],
                     "scene_count": render_result.get("scene_count", 0),
                     "missing": [],
                 }

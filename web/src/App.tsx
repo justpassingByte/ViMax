@@ -32,6 +32,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import {deleteSession, getAgentConfig, getArtifacts, getHistory, getSessions, saveAgentConfig, sendMessage, startAgent, stopAgent, subscribeToEvents, uploadWorkspaceFile} from './api';
 import {ArtifactsView, StoryboardPanel} from './ArtifactViews';
+import {translations, resolveLocale, LOCALE_STORAGE_KEY, type Locale} from './i18n';
 import {applyAgentEvent, appendLocalUser, composeAgentPrompt, createChatState, humanize} from './events';
 import {matchingSlashCommands, shouldShowSlashCommands, type SlashCommandMatch} from './slashCommands';
 import {applyTheme, resolveTheme, THEME_STORAGE_KEY, type Theme} from './theme';
@@ -53,6 +54,14 @@ export default function App() {
   const [storyboardPanelOpen, setStoryboardPanelOpen] = useState(false);
   const [storyboardCount, setStoryboardCount] = useState(0);
   const [theme, setTheme] = useState<Theme>(() => resolveTheme(document.documentElement.dataset.theme, false));
+  const [locale, setLocale] = useState<Locale>(() => resolveLocale());
+  const t = translations[locale];
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(LOCALE_STORAGE_KEY, locale);
+    } catch {}
+  }, [locale]);
   const [draft, setDraft] = useState('');
   const [workspaceUploads, setWorkspaceUploads] = useState<WorkspaceUpload[]>([]);
   const [uploadingFiles, setUploadingFiles] = useState(false);
@@ -68,7 +77,7 @@ export default function App() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const selectedSession = sessions.find((session) => session.sessionId === selectedSessionId);
-  const slashMatches = useMemo(() => matchingSlashCommands(draft), [draft]);
+  const slashMatches = useMemo(() => matchingSlashCommands(draft, locale), [draft, locale]);
   const showSlashCommands = shouldShowSlashCommands(draft, chat.busy);
   const runningRender = useMemo(
     () => [...chat.messages].reverse().find((message) => message.role === 'activity'
@@ -253,7 +262,7 @@ export default function App() {
     const sessionId = selectedSessionId;
     if (!files?.length) return;
     if (!sessionId) {
-      setLoadError('Create or select a project before uploading files');
+      setLoadError(t.createProjectFirst);
       return;
     }
     setUploadingFiles(true);
@@ -314,6 +323,8 @@ export default function App() {
   return (
     <div className="app-shell">
       <Sidebar
+        locale={locale}
+        t={t}
         open={sidebarOpen}
         mobileOpen={mobileSidebarOpen}
         sessions={sessions}
@@ -351,6 +362,7 @@ export default function App() {
             )}
             <span className="workspace-utility-spacer" />
             <div className="workspace-utility-actions">
+              <LocaleToggle locale={locale} onToggle={() => setLocale((cur) => cur === 'vi' ? 'en' : 'vi')} />
               <ThemeToggle theme={theme} onToggle={() => setTheme((current) => current === 'dark' ? 'light' : 'dark')} />
               <button className="icon-button artifact-toggle" onClick={() => setStoryboardPanelOpen((value) => !value)} aria-label="Toggle storyboard preview">
                 <PanelRight size={18} />
@@ -370,18 +382,21 @@ export default function App() {
                 </button>
               )}
               <div className="workspace-title-copy">
-                <strong>{workspaceView === 'settings' ? 'Settings' : 'Artifacts'}</strong>
+                <strong>{workspaceView === 'settings' ? t.settings : t.artifacts}</strong>
                 {workspaceView === 'settings' && <span>configs/agent.local.yaml</span>}
               </div>
             </div>
-            <ThemeToggle theme={theme} onToggle={() => setTheme((current) => current === 'dark' ? 'light' : 'dark')} />
+            <div className="workspace-utility-actions">
+              <LocaleToggle locale={locale} onToggle={() => setLocale((cur) => cur === 'vi' ? 'en' : 'vi')} />
+              <ThemeToggle theme={theme} onToggle={() => setTheme((current) => current === 'dark' ? 'light' : 'dark')} />
+            </div>
           </header>
         )}
 
         {workspaceView === 'workspace' ? (
           <div className="conversation" ref={scrollRef}>
             {!hasConversation ? (
-              <EmptyState theme={theme} />
+              <EmptyState theme={theme} t={t} />
             ) : (
               <div className="message-stream">
                 {chat.messages.map((message) => <MessageRow key={message.id} message={message} />)}
@@ -390,9 +405,9 @@ export default function App() {
             )}
           </div>
         ) : workspaceView === 'artifacts' ? (
-          <ArtifactsView session={selectedSession} artifacts={artifacts} />
+          <ArtifactsView session={selectedSession} artifacts={artifacts} locale={locale} />
         ) : (
-          <SettingsView />
+          <SettingsView locale={locale} t={t} />
         )}
 
         {workspaceView === 'workspace' && <div className="composer-zone">
@@ -422,8 +437,8 @@ export default function App() {
                   void submit();
                 }
               }}
-              placeholder="Describe what you want to make"
-              aria-label="Message ViMax"
+              placeholder={t.describeIdea}
+              aria-label={t.messageViMax}
               disabled={chat.busy}
               rows={1}
             />
@@ -442,7 +457,7 @@ export default function App() {
                     </button>
                   </span>
                 ))}
-                {uploadingFiles && <span className="composer-uploading">Uploading…</span>}
+                {uploadingFiles && <span className="composer-uploading">{t.uploading}</span>}
               </div>
             )}
             <div className="composer-controls">
@@ -459,17 +474,17 @@ export default function App() {
                 className="composer-add"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={!selectedSessionId || uploadingFiles || chat.busy}
-                aria-label="Upload files to workspace"
+                aria-label={t.uploadTooltip}
                 aria-busy={uploadingFiles}
-                title={selectedSessionId ? 'Upload files to workspace' : 'Create or select a project first'}
+                title={selectedSessionId ? t.uploadTooltip : t.createProjectFirst}
               >
                 <Plus size={20} />
               </button>
               <div className="composer-spacer" />
               {chat.busy ? (
-                <button className="send-button stop" onClick={() => void stop()} aria-label="Stop generation"><CircleStop size={18} /></button>
+                <button className="send-button stop" onClick={() => void stop()} aria-label={t.stopGeneration}><CircleStop size={18} /></button>
               ) : (
-                <button className="send-button" onClick={() => void submit()} disabled={!draft.trim() || uploadingFiles} aria-label="Send message"><ArrowUp size={19} /></button>
+                <button className="send-button" onClick={() => void submit()} disabled={!draft.trim() || uploadingFiles} aria-label={t.sendMessage}><ArrowUp size={19} /></button>
               )}
             </div>
           </div>
@@ -479,17 +494,22 @@ export default function App() {
       <StoryboardPanel
         open={storyboardPanelOpen && workspaceView === 'workspace'}
         artifacts={artifacts}
+        locale={locale}
         activeRenderStage={runningRender?.stage}
         onClose={() => setStoryboardPanelOpen(false)}
         onCountChange={setStoryboardCount}
       />
       <DeleteProjectDialog
+        locale={locale}
+        t={t}
         session={pendingDelete}
         deleting={deleting}
         onCancel={() => !deleting && setPendingDelete(undefined)}
         onConfirm={() => void confirmDelete()}
       />
       <NewProjectDialog
+        locale={locale}
+        t={t}
         open={newProjectOpen}
         name={newProjectName}
         error={newProjectError}
@@ -509,7 +529,9 @@ export default function App() {
   );
 }
 
-function Sidebar({open, mobileOpen, sessions, selectedSessionId, activeView, onToggle, onMobileClose, onNew, onSelect, onWorkspace, onArtifacts, onSettings, onDelete}: {
+function Sidebar({locale, t, open, mobileOpen, sessions, selectedSessionId, activeView, onToggle, onMobileClose, onNew, onSelect, onWorkspace, onArtifacts, onSettings, onDelete}: {
+  locale: Locale;
+  t: (typeof translations)[Locale];
   open: boolean;
   mobileOpen: boolean;
   sessions: SessionSummary[];
@@ -536,13 +558,13 @@ function Sidebar({open, mobileOpen, sessions, selectedSessionId, activeView, onT
           <button className="icon-button mobile-only" onClick={onMobileClose} aria-label="Close navigation"><X size={18} /></button>
         </div>
         <nav className="primary-nav" aria-label="Primary navigation">
-          <button onClick={onNew}><FolderPlus size={17} /><span>New project</span></button>
-          <button className={activeView === 'workspace' ? 'is-active' : ''} onClick={onWorkspace}><Folder size={17} /><span>Workspace</span></button>
-          <button className={activeView === 'artifacts' ? 'is-active' : ''} onClick={onArtifacts}><Files size={17} /><span>Artifacts</span></button>
-          <button className={activeView === 'settings' ? 'is-active' : ''} onClick={onSettings}><Settings size={17} /><span>Settings</span></button>
+          <button onClick={onNew}><FolderPlus size={17} /><span>{t.newProject}</span></button>
+          <button className={activeView === 'workspace' ? 'is-active' : ''} onClick={onWorkspace}><Folder size={17} /><span>{t.workspace}</span></button>
+          <button className={activeView === 'artifacts' ? 'is-active' : ''} onClick={onArtifacts}><Files size={17} /><span>{t.artifacts}</span></button>
+          <button className={activeView === 'settings' ? 'is-active' : ''} onClick={onSettings}><Settings size={17} /><span>{t.settings}</span></button>
         </nav>
         <div className="session-section">
-          <div className="section-label"><span>Projects</span><span>{sessions.length}</span></div>
+          <div className="section-label"><span>{t.projects}</span><span>{sessions.length}</span></div>
           <div className="session-list">
             {sessions.map((session) => (
               <div
@@ -552,7 +574,7 @@ function Sidebar({open, mobileOpen, sessions, selectedSessionId, activeView, onT
                 <button className="session-open" onClick={() => onSelect(session.sessionId)}>
                   <span className="session-copy">
                     <strong>{sessionTitle(session)}</strong>
-                    <small>{relativeTime(session.updatedAt)} · {stageLabel(session.stage)}</small>
+                    <small>{relativeTime(session.updatedAt, locale)} · {stageLabel(session.stage, locale)}</small>
                   </span>
                 </button>
                 <button className="session-delete" onClick={() => onDelete(session)} aria-label={`Delete ${sessionTitle(session)}`} title="Delete project">
@@ -560,24 +582,43 @@ function Sidebar({open, mobileOpen, sessions, selectedSessionId, activeView, onT
                 </button>
               </div>
             ))}
-            {sessions.length === 0 && <span className="empty-list">No projects yet</span>}
+            {sessions.length === 0 && <span className="empty-list">{t.noProjects}</span>}
           </div>
         </div>
         <div className="sidebar-footer">
           <span className="avatar">V</span>
-          <div><strong>Local workspace</strong><small>Local · ViMax</small></div>
+          <div><strong>{t.localWorkspace}</strong><small>{t.localViMax}</small></div>
         </div>
       </aside>
     </>
   );
 }
 
-function EmptyState({theme}: {theme: Theme}) {
+function EmptyState({theme, t}: {theme: Theme; t: (typeof translations)[Locale]}) {
   return (
     <section className="empty-state">
       <img className="empty-state-logo" src={theme === 'dark' ? '/vimax-light.svg' : '/vimax-dark.svg'} alt="ViMax" />
-      <h1>What should we create?</h1>
+      <h1>{t.whatShouldWeCreate}</h1>
+      <p style={{maxWidth: '560px', margin: '14px auto 0', color: 'var(--color-text-muted, #71717a)', fontSize: '13.5px', lineHeight: 1.55, textAlign: 'center'}}>
+        {t.emptyStateTip}
+      </p>
     </section>
+  );
+}
+
+
+function LocaleToggle({locale, onToggle}: {locale: Locale; onToggle: () => void}) {
+  return (
+    <button
+      type="button"
+      className="icon-button locale-toggle"
+      onClick={onToggle}
+      aria-label={locale === 'vi' ? 'Chuyển sang tiếng Anh' : 'Switch to Vietnamese'}
+      title={locale === 'vi' ? 'Tiếng Việt (Bấm để đổi sang English)' : 'English (Click to switch to Tiếng Việt)'}
+      style={{fontSize: '11px', fontWeight: 700, padding: '0 6px', letterSpacing: '0.5px'}}
+    >
+      {locale.toUpperCase()}
+    </button>
   );
 }
 
@@ -659,7 +700,7 @@ function ThinkingRow({messages}: {messages: Message[]}) {
   return (
     <div className="thinking-row">
       <span className="thinking-mark"><i /><i /><i /></span>
-      <span>{running ? `${humanize(running.tool || 'ViMax')} · ${running.text}` : 'ViMax is thinking'}</span>
+      <span>{running ? `${humanize(running.tool || 'ViMax')} · ${running.text}` : (running ? undefined : 'ViMax đang xử lý...')}</span>
     </div>
   );
 }
@@ -685,7 +726,7 @@ const CONFIG_SECTIONS: Array<{key: keyof AgentConfig['sections']; title: string;
   {key: 'reranker', title: 'Reranker', description: 'Optional novel retrieval ranking'},
 ];
 
-function SettingsView() {
+function SettingsView({locale, t}: {locale: Locale; t: (typeof translations)[Locale]}) {
   const [config, setConfig] = useState<AgentConfig>();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -716,7 +757,7 @@ function SettingsView() {
     setStatus('');
     try {
       setConfig(await saveAgentConfig(config));
-      setStatus('Saved');
+      setStatus(t.saved);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : String(error));
     } finally {
@@ -724,16 +765,16 @@ function SettingsView() {
     }
   }
 
-  if (loading) return <div className="settings-loading">Loading configuration…</div>;
-  if (!config) return <div className="settings-loading is-error">{status || 'Configuration unavailable'}</div>;
+  if (loading) return <div className="settings-loading">{t.loadingConfig}</div>;
+  if (!config) return <div className="settings-loading is-error">{status || t.configUnavailable}</div>;
   return (
     <section className="settings-view">
       <header>
-        <div><span>Local configuration</span><h1>Settings</h1></div>
+        <div><span>{t.localConfig}</span><h1>{t.settingsTitle}</h1></div>
         <div className="settings-save-group">
-          {status && <span className={status === 'Saved' ? 'is-saved' : 'is-error'}>{status}</span>}
+          {status && <span className={(status === 'Saved' || status === t.saved) ? 'is-saved' : 'is-error'}>{status}</span>}
           <button className="settings-save" onClick={() => void save()} disabled={saving}>
-            <Save size={15} />{saving ? 'Saving…' : 'Save'}
+            <Save size={15} />{saving ? t.saving : t.saveConfig}
           </button>
         </div>
       </header>
@@ -741,9 +782,13 @@ function SettingsView() {
         {CONFIG_SECTIONS.map((definition) => (
           <ConfigSectionEditor
             key={definition.key}
-            definition={definition}
+            definition={{
+              title: definition.key === 'llm' ? t.sectionLlmTitle : definition.key === 'image' ? t.sectionImageTitle : definition.key === 'video' ? t.sectionVideoTitle : definition.key === 'embedding' ? t.sectionEmbeddingTitle : t.sectionRerankerTitle,
+              description: definition.key === 'llm' ? t.sectionLlmDesc : definition.key === 'image' ? t.sectionImageDesc : definition.key === 'video' ? t.sectionVideoDesc : definition.key === 'embedding' ? t.sectionEmbeddingDesc : t.sectionRerankerDesc,
+            }}
             value={config.sections[definition.key]}
             onChange={(field, value) => update(definition.key, field, value)}
+            t={t}
           />
         ))}
       </div>
@@ -751,7 +796,8 @@ function SettingsView() {
   );
 }
 
-function ConfigSectionEditor({definition, value, onChange}: {
+function ConfigSectionEditor({definition, value, onChange, t}: {
+  t: (typeof translations)[Locale];
   definition: {title: string; description: string};
   value: ConfigSection;
   onChange: (field: keyof ConfigSection, value: string) => void;
@@ -761,20 +807,22 @@ function ConfigSectionEditor({definition, value, onChange}: {
       <header><h2>{definition.title}</h2><p>{definition.description}</p></header>
       <div className="config-fields">
         {value.model_provider !== undefined && (
-          <label><span>Model provider</span><input value={value.model_provider} onChange={(event) => onChange('model_provider', event.target.value)} /></label>
+          <label><span>{t.modelProvider}</span><input value={value.model_provider} onChange={(event) => onChange('model_provider', event.target.value)} /></label>
         )}
-        <label><span>Model</span><input value={value.model} onChange={(event) => onChange('model', event.target.value)} /></label>
-        <label className="config-field-wide"><span>Base URL</span><input value={value.base_url} onChange={(event) => onChange('base_url', event.target.value)} inputMode="url" /></label>
+        <label><span>{t.model}</span><input value={value.model} onChange={(event) => onChange('model', event.target.value)} /></label>
+        <label className="config-field-wide"><span>{t.baseUrl}</span><input value={value.base_url} onChange={(event) => onChange('base_url', event.target.value)} inputMode="url" /></label>
         <label className="config-field-wide">
-          <span>API key <i className={value.has_api_key ? 'is-configured' : ''}>{value.has_api_key ? 'Configured' : 'Not configured'}</i></span>
-          <input type="password" value={value.api_key} onChange={(event) => onChange('api_key', event.target.value)} placeholder={value.has_api_key ? 'Leave blank to keep current key' : 'Enter API key'} autoComplete="off" />
+          <span>{t.apiKey} <i className={value.has_api_key ? 'is-configured' : ''}>{value.has_api_key ? t.configured : t.notConfigured}</i></span>
+          <input type="password" value={value.api_key} onChange={(event) => onChange('api_key', event.target.value)} placeholder={value.has_api_key ? t.apiKeyPlaceholderConfigured : t.apiKeyPlaceholderEmpty} autoComplete="off" />
         </label>
       </div>
     </section>
   );
 }
 
-function DeleteProjectDialog({session, deleting, onCancel, onConfirm}: {
+function DeleteProjectDialog({locale, t, session, deleting, onCancel, onConfirm}: {
+  locale: Locale;
+  t: (typeof translations)[Locale];
   session?: SessionSummary;
   deleting: boolean;
   onCancel: () => void;
@@ -795,19 +843,21 @@ function DeleteProjectDialog({session, deleting, onCancel, onConfirm}: {
       <section className="delete-dialog" role="dialog" aria-modal="true" aria-labelledby="delete-project-title">
         <span className="dialog-icon"><Trash2 size={18} /></span>
         <div className="dialog-copy">
-          <h2 id="delete-project-title">Delete project?</h2>
-          <p><strong>{sessionTitle(session)}</strong> and its generated files will be permanently removed.</p>
+          <h2 id="delete-project-title">{t.deleteProjectDialogTitle}</h2>
+          <p><strong>{sessionTitle(session)}</strong> {t.deleteProjectDialogDesc}</p>
         </div>
         <div className="dialog-actions">
-          <button onClick={onCancel} disabled={deleting} autoFocus>Cancel</button>
-          <button className="danger" onClick={onConfirm} disabled={deleting}>{deleting ? 'Deleting…' : 'Delete'}</button>
+          <button onClick={onCancel} disabled={deleting} autoFocus>{t.cancelBtn}</button>
+          <button className="danger" onClick={onConfirm} disabled={deleting}>{deleting ? t.deletingBtn : t.deleteBtn}</button>
         </div>
       </section>
     </div>
   );
 }
 
-function NewProjectDialog({open, name, error, creating, onNameChange, onCancel, onConfirm}: {
+function NewProjectDialog({locale, t, open, name, error, creating, onNameChange, onCancel, onConfirm}: {
+  locale: Locale;
+  t: (typeof translations)[Locale];
   open: boolean;
   name: string;
   error: string;
@@ -834,15 +884,15 @@ function NewProjectDialog({open, name, error, creating, onNameChange, onCancel, 
       }}>
         <span className="dialog-icon is-create"><FolderPlus size={18} /></span>
         <div className="dialog-copy">
-          <h2 id="new-project-title">Create a new project</h2>
-          <p>Name the workspace before creating it.</p>
+          <h2 id="new-project-title">{t.createProjectDialogTitle}</h2>
+          <p>{t.createProjectDialogDesc}</p>
         </div>
         <label className="project-name-field">
-          <span>Project name</span>
+          <span>{t.projectNameLabel}</span>
           <input
             value={name}
             onChange={(event) => onNameChange(event.target.value)}
-            placeholder="Untitled video"
+            placeholder={t.projectNamePlaceholder}
             maxLength={64}
             autoFocus
             disabled={creating}
@@ -850,8 +900,8 @@ function NewProjectDialog({open, name, error, creating, onNameChange, onCancel, 
           {error && <small role="alert">{error}</small>}
         </label>
         <div className="dialog-actions">
-          <button type="button" onClick={onCancel} disabled={creating}>Cancel</button>
-          <button type="submit" className="primary" disabled={creating || !name.trim()}>{creating ? 'Creating…' : 'Create'}</button>
+          <button type="button" onClick={onCancel} disabled={creating}>{t.cancelBtn}</button>
+          <button type="submit" className="primary" disabled={creating || !name.trim()}>{creating ? t.creatingBtn : t.createBtn}</button>
         </div>
       </form>
     </div>
@@ -866,28 +916,30 @@ function sessionTitle(session?: SessionSummary) {
   return session.sessionId.replace(/^\d{8}-\d{6}-?/, '') || 'Untitled video';
 }
 
-function stageLabel(stage: string) {
+function stageLabel(stage: string, locale: Locale = 'vi') {
+  const t = translations[locale];
   const labels: Record<string, string> = {
-    created: 'Created',
-    narrative_planning: 'Planning',
-    narrative_planned: 'Plan ready',
-    novel_planning: 'Planning novel',
-    novel_planned: 'Novel ready',
-    rendering: 'Rendering',
-    rendered: 'Rendered',
-    error: 'Needs attention',
+    created: t.stageCreated,
+    narrative_planning: t.stagePlanning,
+    narrative_planned: t.stagePlanReady,
+    novel_planning: t.stagePlanningNovel,
+    novel_planned: t.stageNovelReady,
+    rendering: t.stageRendering,
+    rendered: t.stageRendered,
+    error: t.stageError,
   };
   return labels[stage] || humanize(stage || 'Created');
 }
 
-function relativeTime(value: string) {
+function relativeTime(value: string, locale: Locale = 'vi') {
+  const t = translations[locale];
   const timestamp = Date.parse(value);
-  if (!Number.isFinite(timestamp)) return 'Recently';
+  if (!Number.isFinite(timestamp)) return t.recently;
   const delta = Math.max(0, Date.now() - timestamp);
   const minutes = Math.floor(delta / 60_000);
-  if (minutes < 1) return 'Now';
-  if (minutes < 60) return `${minutes}m`;
+  if (minutes < 1) return t.now;
+  if (minutes < 60) return `${minutes}${locale === 'vi' ? ' ' + t.minutesAgo : 'm'}`;
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h`;
-  return `${Math.floor(hours / 24)}d`;
+  if (hours < 24) return `${hours}${locale === 'vi' ? ' ' + t.hoursAgo : 'h'}`;
+  return `${Math.floor(hours / 24)}${locale === 'vi' ? ' ' + t.daysAgo : 'd'}`;
 }

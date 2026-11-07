@@ -8,14 +8,19 @@ export type SlashCommandMatch = SlashCommand & {
   unmatchedSuffix: string;
 };
 
-export const SLASH_COMMANDS: SlashCommand[] = [
-  {name: '/compact', description: 'Compact the current session context'},
-];
+export function getSlashCommands(locale: 'vi' | 'en' = 'vi'): SlashCommand[] {
+  return [
+    {
+      name: '/compact',
+      description: locale === 'vi' ? 'Nén và tối ưu hóa ngữ cảnh của dự án hiện tại' : 'Compact the current session context',
+    },
+  ];
+}
 
-export function matchingSlashCommands(input: string): SlashCommandMatch[] {
+export function matchingSlashCommands(input: string, locale: 'vi' | 'en' = 'vi'): SlashCommandMatch[] {
   if (!input.startsWith('/')) return [];
   const query = input.trimStart().split(/\s+/, 1)[0] ?? '';
-  return SLASH_COMMANDS
+  return getSlashCommands(locale)
     .filter((command) => command.name.toLowerCase().startsWith(query.toLowerCase()))
     .map((command) => ({
       ...command,
