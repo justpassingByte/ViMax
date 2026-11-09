@@ -8,17 +8,15 @@ llm:
   api_key: ''
 
 audio:
-  model_provider: elevenlabs    # elevenlabs hoặc edge-tts
-  model: eleven_multilingual_v2 # hoặc vi-VN-NamMinhNeural (Edge-TTS)
+  model_provider: native        # native (giữ âm thanh/thoại gốc từ video), elevenlabs, hoặc edge-tts
+  model: eleven_multilingual_v2 # hoặc vi-VN-NamMinhNeural (Edge-TTS); bỏ qua nếu provider=native
   base_url: https://api.elevenlabs.io/v1
-  api_key: ''                   # ElevenLabs API key (Edge-TTS để trống)
+  api_key: ''                   # ElevenLabs API key (native / Edge-TTS để trống)
   voice: 21m00Tcm4TlvDq8ikWAM   # Giọng mặc định / Người dẫn chuyện (Narrator)
-  bgm_file: ''                  # Đường dẫn file nhạc nền mp3 (nếu có)
-  bgm_volume: 0.15              # Âm lượng nhạc nền
+  bgm_file: ''                  # Đường dẫn file nhạc nền mp3/wav (nếu có)
+  bgm_volume: 0.15              # Âm lượng nhạc nền (0.0 - 1.0)
 
-  # Phân vai nhiều giọng đọc cho nhiều nhân vật (Multi-character Voices):
-  # ViMax tự động bóc tách nhân vật nào đang nói trong từng shot để gán đúng giọng!
-  # Nếu dùng ElevenLabs: điền Voice ID. Nếu dùng Edge-TTS: điền tên giọng (vi-VN-HoaiMyNeural, vi-VN-NamMinhNeural)
+  # Phân vai nhiều giọng đọc cho nhiều nhân vật (chỉ dùng khi model_provider là elevenlabs hoặc edge-tts):
   character_voices:
     Alice: EXAVITQu4vr4xnSDxMaL     # Nữ chính (Bella)
     Bob: pNInz6obpgDQGcFmaJgB       # Nam chính (Adam)
@@ -26,22 +24,32 @@ audio:
     female: EXAVITQu4vr4xnSDxMaL    # Giọng nữ mặc định (nếu nhân vật chưa khai báo)
     male: pNInz6obpgDQGcFmaJgB      # Giọng nam mặc định (nếu nhân vật chưa khai báo)
 
+subtitles:
+  enabled: true                 # Tự động tạo .srt & .ass theo thời lượng thật từng shot
+  language: vi                  # Ngôn ngữ phụ đề (vi = đọc dòng Vietsub trong script hoặc tự dịch bằng LLM)
+  burn_in: true                 # Gắn cứng phụ đề (libass) vào final_video.mp4
+  font: Arial                   # Font hiển thị phụ đề (Linux VPS cần cài fonts-dejavu-core / fonts-noto-core)
+  font_size: 34                 # Cỡ chữ ASS (theo hệ tọa độ 1280x720)
+
 image:
-  # Cấu hình tạo ảnh nhân vật & Keyframe cho video. Có 3 lựa chọn hàng đầu:
-  # Lựa chọn 1 (KHUYÊN DÙNG vì siêu nhanh ~2-4s/ảnh, tỉ lệ 16:9 điện ảnh): Google Gemini Flash Image qua Yunwu
-  #   model: gemini-3.1-flash-image-preview   # hoặc gemini-2.5-flash-image-preview
-  #   base_url: https://yunwu.ai
-  #   api_key: <YUNWU_API_KEY>                # (Dùng chung key với LLM và Video)
-  #
-  # Lựa chọn 2 (Đẹp nhất cho nhân vật & chân thực): FLUX qua OpenRouter
-  #   model: black-forest-labs/flux-1.1-pro  # hoặc openai/gpt-image-2
-  #   base_url: https://openrouter.ai/api/v1
-  #   api_key: <OPENROUTER_API_KEY>
-  #
-  # Lựa chọn 3 (Đồng bộ ByteDance với Seedance): Doubao SeaDream qua Yunwu
-  #   model: doubao-seedream-4-0-250828
+  # Chọn provider & model tạo ảnh. Ví dụ:
+  # - muse2api (Local / VPS miễn phí qua Web):
+  #   model_provider: muse2api
+  #   model: muse-image
+  #   base_url: http://127.0.0.1:18610/v1
+  #   api_key: <MUSE2API_KEY>
+  # - Google Gemini Flash Image qua Yunwu (nhanh ~2-4s/ảnh):
+  #   model_provider: yunwu
+  #   model: gemini-3.1-flash-image-preview
   #   base_url: https://yunwu.ai
   #   api_key: <YUNWU_API_KEY>
+  # - FLUX qua OpenRouter:
+  #   model_provider: openrouter
+  #   model: black-forest-labs/flux-1.1-pro
+  #   base_url: https://openrouter.ai/api/v1
+  #   api_key: <OPENROUTER_API_KEY>
+  # (Khi dùng muse2api, có thể đặt biến môi trường VIMAX_MUSE_MEDIA_CONCURRENCY=1..3 để điều chỉnh luồng)
+  model_provider: ''
   model: <YOUR_IMAGE_MODEL>
   base_url: <YOUR_IMAGE_BASE_URL>
   api_key: ''

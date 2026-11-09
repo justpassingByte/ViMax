@@ -1,18 +1,35 @@
 import os
 import re
+import json
+import math
+import time
+import shutil
 import asyncio
 import logging
+import subprocess
 import requests
+from pathlib import Path
 from typing import Optional, List, Tuple, Any, Dict
 from moviepy import VideoFileClip, AudioFileClip, CompositeAudioClip
+from utils.robust_json_parser import (
+    iter_json_blocks,
+    strip_markdown_json_wrapper,
+    strip_trailing_commas,
+)
 
 logger = logging.getLogger(__name__)
 
-async def generate_speech_edge_tts(text: str, output_path: str, voice: str = "vi-VN-NamMinhNeural", rate: str = "+0%") -> str:
+async def generate_speech_edge_tts(
+    text: str,
+    output_path: str,
+    voice: str = "vi-VN-NamMinhNeural",
+    rate: str = "+0%",
+    pitch: str = "+0Hz"
+) -> str:
     """Generate high-quality speech using Edge-TTS (Microsoft Neural Voice)."""
     import edge_tts
     os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
-    communicator = edge_tts.Communicate(text, voice, rate=rate)
+    communicator = edge_tts.Communicate(text, voice, rate=rate, pitch=pitch)
     await communicator.save(output_path)
     return output_path
 
@@ -55,6 +72,8 @@ async def synthesize_speech(
     voice: str = "",
     model: str = "eleven_multilingual_v2",
     base_url: str = "https://api.elevenlabs.io/v1",
+    rate: str = "+0%",
+    pitch: str = "+0Hz",
 ) -> str:
     """Synthesize speech using either ElevenLabs or Edge-TTS based on config."""
     text = (text or "").strip()
@@ -76,57 +95,71 @@ async def synthesize_speech(
             base_url.strip() or "https://api.elevenlabs.io/v1"
         )
     else:
-        # Default fallback to high quality Edge-TTS
         edge_voice = voice.strip() if "Neural" in (voice or "") else "vi-VN-NamMinhNeural"
-        return await generate_speech_edge_tts(text, output_path, voice=edge_voice)
+        return await generate_speech_edge_tts(text, output_path, voice=edge_voice, rate=rate, pitch=pitch)
 
-DEFAULT_FEMALE_VOICE_ELEVENLABS = "EXAVITQu4vr4xnSDxMaL"  # Bella (Expressive Female)
-DEFAULT_MALE_VOICE_ELEVENLABS = "pNInz6obpgDQGcFmaJgB"    # Adam (Deep Male)
-DEFAULT_FEMALE_VOICE_EDGE_TTS = "vi-VN-HoaiMyNeural"      # Hoài My (Nữ)
-DEFAULT_MALE_VOICE_EDGE_TTS = "vi-VN-NamMinhNeural"        # Nam Minh (Nam)
+DEFAULT_FEMALE_VOICE_ELEVENLABS = "EXAVITQu4vr4xnSDxMaL"
+DEFAULT_MALE_VOICE_ELEVENLABS = "pNInz6obpgDQGcFmaJgB"
+DEFAULT_FEMALE_VOICE_EDGE_TTS = "vi-VN-HoaiMyNeural"
+DEFAULT_MALE_VOICE_EDGE_TTS = "vi-VN-NamMinhNeural"
 
-def extract_dialogue_from_shot(audio_desc: str = "", visual_desc: str = "") -> Tuple[str, str]:
-    """Extract character speaker and dialogue line from storyboard shot descriptions.
-    
-    Returns (speaker_name, dialogue_text). If no specific speaker is identified, speaker is empty.
-    """
+def extract_all_dialogues_from_shot(audio_desc: str = "", visual_desc: str = "") -> List[Tuple[str, str]]:
+    """Extract all character speakers and dialogue lines from storyboard shot descriptions."""
     audio_desc = audio_desc or ""
     visual_desc = visual_desc or ""
+    dialogues = []
 
-    # 1. Match [Speaker] tag: [Speaker] Alice (Happy): Hello!
-    speaker_tag_match = re.search(r'\[Speaker\]\s*([^:\(]+?)(?:\s*\([^)]*\))?\s*:\s*(.+)', audio_desc, re.IGNORECASE)
-    if speaker_tag_match:
-        speaker = speaker_tag_match.group(1).strip().strip('<>"\'')
-        text = speaker_tag_match.group(2).strip().strip('"\'')
-        if text:
-            return speaker, text
+    # 1. Match all [Speaker] Name (Emotion): Dialogue text up to next [Speaker] or [Sound Effect] or end
+    pattern = r'\[Speaker\]\s*([^:\(\[\n]+?)(?:\s*\([^)]*\))?\s*:\s*(.+?)(?=\s*\[Speaker\]|\s*\[Sound Effect\]|$)'
+    for m in re.finditer(pattern, audio_desc, re.IGNORECASE | re.DOTALL):
+        spk = m.group(1).strip().strip('<>"\'')
+        txt = m.group(2).strip().strip('"\'')
+        txt = re.sub(r'\[.*?\]', '', txt).strip()
+        if spk and txt:
+            dialogues.append((spk, txt))
 
-    # 2. Match character speech in visual_desc: <Alice> (female...) says: "..."
-    char_says_match = re.search(r'<([^>]+)>[^:]*says?:\s*["\']([^"\']+)["\']', visual_desc, re.IGNORECASE)
-    if char_says_match:
-        speaker = char_says_match.group(1).strip()
-        text = char_says_match.group(2).strip()
-        if text:
-            return speaker, text
+    if dialogues:
+        return dialogues
 
-    # 3. Match general Character says: Alice says: "..."
-    gen_says_match = re.search(r'([A-Za-z0-9_\s]{2,20})\s+says?:\s*["\']([^"\']+)["\']', visual_desc, re.IGNORECASE)
-    if gen_says_match:
-        speaker = gen_says_match.group(1).strip()
-        text = gen_says_match.group(2).strip()
-        if text:
-            return speaker, text
+    # 2. Match character speech in visual_desc: <Alice> says: "..."
+    char_says_matches = re.finditer(r'<([^>]+)>[^:]*says?:\s*["\']([^"\']+)["\']', visual_desc, re.IGNORECASE)
+    for m in char_says_matches:
+        spk = m.group(1).strip()
+        txt = m.group(2).strip()
+        if spk and txt:
+            dialogues.append((spk, txt))
 
-    # 4. Match quotes in audio_desc: "Hello world"
+    if dialogues:
+        return dialogues
+
+    # 2b. Match general Character says in visual_desc: Charlie says: "..."
+    gen_says_matches = re.finditer(r'(?:^|[\n.,;]\s*)([A-Za-z0-9_\s]{2,20})\s+says?:\s*["\']([^"\']+)["\']', visual_desc, re.IGNORECASE)
+    for m in gen_says_matches:
+        spk = m.group(1).strip()
+        txt = m.group(2).strip()
+        if spk and txt:
+            dialogues.append((spk, txt))
+
+    if dialogues:
+        return dialogues
+
+    # 3. Match quotes in audio_desc
     quote_match = re.search(r'["\']([^"\']{4,})["\']', audio_desc)
     if quote_match:
-        return "", quote_match.group(1).strip()
+        return [("", quote_match.group(1).strip())]
 
-    # 5. Filter out [Sound Effect] tag
+    # 4. Filter out [Sound Effect]
     cleaned = re.sub(r'\[Sound Effect\][^\n]*', '', audio_desc, flags=re.IGNORECASE).strip()
     if len(cleaned) > 5 and not cleaned.lower().startswith('none'):
-        return "", cleaned
+        return [("", cleaned)]
 
+    return []
+
+def extract_dialogue_from_shot(audio_desc: str = "", visual_desc: str = "") -> Tuple[str, str]:
+    """Extract single character speaker and dialogue line (backwards compatibility)."""
+    all_d = extract_all_dialogues_from_shot(audio_desc, visual_desc)
+    if all_d:
+        return all_d[0]
     return "", ""
 
 def extract_speech_from_shot(audio_desc: str = "", visual_desc: str = "") -> str:
@@ -156,8 +189,8 @@ def resolve_voice_for_speaker(
     is_female = False
     is_male = False
 
-    female_keywords = {"female", "woman", "girl", "nữ", "cô", "nàng", "bà", "chị", "em", "phụ nữ"}
-    male_keywords = {"male", "man", "boy", "nam", "chàng", "ông", "anh", "đàn ông"}
+    female_keywords = {"female", "woman", "girl", "nữ", "cô", "nàng", "bà", "chị", "em", "phụ nữ", "ai", "trợ lý"}
+    male_keywords = {"male", "man", "boy", "nam", "chàng", "ông", "anh", "đàn ông", "sếp", "huy"}
 
     if speaker and characters:
         for char in characters:
@@ -195,19 +228,61 @@ def resolve_voice_for_speaker(
     # 3. Fallback to default configured voice
     return default_voice.strip() or (DEFAULT_MALE_VOICE_ELEVENLABS if provider == "elevenlabs" else DEFAULT_MALE_VOICE_EDGE_TTS)
 
+def resolve_voice_and_prosody(
+    speaker: str,
+    characters: Optional[List[Any]] = None,
+    provider: str = "edge-tts",
+    default_voice: str = "",
+    character_voices: Optional[dict] = None,
+) -> Tuple[str, str, str]:
+    """Returns (voice_id, rate_str, pitch_str) tailored to the character role."""
+    spk_lower = (speaker or "").strip().lower()
+    voice = resolve_voice_for_speaker(speaker, characters, provider, default_voice, character_voices)
+
+    if any(kw in spk_lower for kw in ["sếp", "sep", "boss", "manager", "quản lý"]):
+        return voice, "-5%", "-5Hz"
+    if any(kw in spk_lower for kw in ["huy", "dev", "coder", "developer"]):
+        return voice, "+8%", "+0Hz"
+    if any(kw in spk_lower for kw in ["ai", "assistant", "trợ lý", "bot", "synthetic"]):
+        ai_voice = (character_voices or {}).get("AI trợ lý") or (character_voices or {}).get("AI") or DEFAULT_FEMALE_VOICE_EDGE_TTS
+        return ai_voice, "+0%", "+0Hz"
+
+    return voice, "+0%", "+0Hz"
+
 def mix_multitrack_video_and_audio(
     video_path: str,
     output_path: str,
     speech_segments: List[Tuple[float, str]],  # [(start_offset_seconds, audio_file_path), ...]
     bgm_path: Optional[str] = None,
     bgm_volume: float = 0.15,
+    preserve_video_audio: bool = True,
+    video_audio_volume: float = 1.0,
 ) -> str:
-    """Mix multiple character speech clips timed across the video timeline, along with BGM."""
+    """Mix multiple character speech clips timed across the video timeline, preserving native audio when requested."""
     if not os.path.exists(video_path):
         return video_path
 
+    has_speech = any(voice_path and os.path.exists(voice_path) for _, voice_path in (speech_segments or []))
+    has_bgm = bool(bgm_path and os.path.exists(bgm_path))
+    if not has_speech and not has_bgm:
+        if video_path != output_path:
+            os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
+            shutil.copyfile(video_path, output_path)
+        return output_path
+
     video = VideoFileClip(video_path)
     audio_clips = []
+
+    if preserve_video_audio and video.audio is not None:
+        try:
+            native_clip = (
+                video.audio
+                if video_audio_volume == 1.0
+                else video.audio.with_volume_scaled(video_audio_volume)
+            )
+            audio_clips.append(native_clip)
+        except Exception as e:
+            logger.warning(f"Error preserving native video audio: {e}")
 
     # 1. Load each character's speech clip positioned at its start time
     for start_time, voice_path in speech_segments:
@@ -217,13 +292,14 @@ def mix_multitrack_video_and_audio(
                 if start_time < video.duration:
                     clip = clip.with_start(start_time)
                     audio_clips.append(clip)
+                else:
+                    clip.close()
             except Exception as e:
                 logger.warning(f"Error loading speech clip {voice_path} at t={start_time}: {e}")
 
     # 2. Load background music
-    if bgm_path and os.path.exists(bgm_path):
+    if has_bgm:
         try:
-            import math
             from moviepy import concatenate_audioclips
             bgm_clip = AudioFileClip(bgm_path).with_volume_scaled(bgm_volume)
             if bgm_clip.duration < video.duration:
@@ -237,7 +313,6 @@ def mix_multitrack_video_and_audio(
     if not audio_clips:
         video.close()
         if video_path != output_path:
-            import shutil
             shutil.copyfile(video_path, output_path)
         return output_path
 
@@ -256,105 +331,405 @@ def mix_multitrack_video_and_audio(
 
         final_video.close()
         for clip in audio_clips:
-            clip.close()
+            if clip is not video.audio:
+                clip.close()
         video.close()
 
-        if os.path.exists(output_path):
-            os.remove(output_path)
-        os.rename(temp_target, output_path)
+        _replace_file_with_retry(Path(temp_target), Path(output_path))
         return output_path
     except Exception as e:
         logger.error(f"Error mixing audio into video: {e}")
-        video.close()
         for clip in audio_clips:
-            clip.close()
+            if clip is not video.audio:
+                try:
+                    clip.close()
+                except Exception:
+                    pass
+        video.close()
         return video_path
 
-def mix_video_and_audio(
-    video_path: str,
-    output_path: str,
-    voice_path: Optional[str] = None,
-    bgm_path: Optional[str] = None,
-    bgm_volume: float = 0.15,
-) -> str:
-    """Mix single voiceover and BGM into a video file (backwards compatibility)."""
-    segments = [(0.0, voice_path)] if voice_path else []
-    return mix_multitrack_video_and_audio(
-        video_path=video_path,
-        output_path=output_path,
-        speech_segments=segments,
-        bgm_path=bgm_path,
-        bgm_volume=bgm_volume,
+
+def extract_spoken_dialogues_for_subtitles(audio_desc: str = "", visual_desc: str = "") -> List[Tuple[str, str]]:
+    """Extract spoken character dialogue lines while ignoring [Sound Effect] quote snippets."""
+    audio_no_sfx = re.sub(
+        r'\[Sound Effect\].*?(?=\s*\[Speaker\]|\n|$)',
+        '',
+        audio_desc or "",
+        flags=re.IGNORECASE | re.DOTALL,
+    ).strip()
+    return extract_all_dialogues_from_shot(audio_desc=audio_no_sfx, visual_desc=visual_desc)
+
+
+def extract_vietsubs_from_script(script_text: str) -> Dict[int, str]:
+    """Parse per-shot (Vietsub: ...) lines from script.txt and normalize shot indices to 0-based."""
+    if not (script_text or "").strip():
+        return {}
+
+    shot_header_re = re.compile(r'^\s*Shot\s+(\d+)\b', re.IGNORECASE)
+    vietsub_re = re.compile(r'^\s*\(?\s*Vietsub\s*:\s*(.+?)\s*\)?\s*$', re.IGNORECASE)
+
+    parsed_by_shot: Dict[int, List[str]] = {}
+    all_shot_nums: List[int] = []
+    current_shot: Optional[int] = None
+
+    for raw_line in script_text.splitlines():
+        line = raw_line.strip()
+        header_m = shot_header_re.match(line)
+        if header_m:
+            current_shot = int(header_m.group(1))
+            all_shot_nums.append(current_shot)
+            continue
+        if current_shot is not None:
+            sub_m = vietsub_re.match(line)
+            if sub_m:
+                sub_text = sub_m.group(1).strip()
+                if sub_text.endswith(")") and "(" not in sub_text:
+                    sub_text = sub_text[:-1].strip()
+                if sub_text:
+                    parsed_by_shot.setdefault(current_shot, []).append(sub_text)
+
+    if not parsed_by_shot:
+        return {}
+
+    one_based = bool(all_shot_nums) and 0 not in all_shot_nums and min(all_shot_nums) >= 1
+    normalized: Dict[int, str] = {}
+    for shot_num, parts in parsed_by_shot.items():
+        idx = shot_num - 1 if one_based else shot_num
+        normalized[idx] = " ".join(parts)
+    return normalized
+
+
+def _split_subtitle_text(text: str, max_chars: int = 75) -> List[str]:
+    clean = " ".join((text or "").split()).strip()
+    if not clean:
+        return []
+    if len(clean) <= max_chars:
+        return [clean]
+
+    midpoint = len(clean) // 2
+    min_chunk = 14
+    candidates: List[int] = []
+
+    for delim in ("... ", "! ", "? ", ". ", ", "):
+        start = 0
+        while True:
+            pos = clean.find(delim, start)
+            if pos == -1:
+                break
+            split_at = pos + len(delim.rstrip())
+            if split_at >= min_chunk and len(clean) - split_at >= min_chunk:
+                candidates.append(split_at)
+            start = pos + len(delim)
+        if candidates:
+            break
+
+    if not candidates:
+        for i, ch in enumerate(clean):
+            if ch == " " and i >= min_chunk and len(clean) - i >= min_chunk:
+                candidates.append(i)
+
+    if not candidates:
+        return [clean]
+
+    best = min(candidates, key=lambda idx: abs(idx - midpoint))
+    first = clean[:best].strip()
+    second = clean[best:].strip()
+    if first and second:
+        return [first, second]
+    return [clean]
+
+
+def build_subtitle_cues(
+    shot_descriptions: List[Any],
+    shot_durations: List[float],
+    script_vietsubs: Optional[Dict[int, str]] = None,
+    translated_dialogues: Optional[Dict[int, str]] = None,
+    max_chars_per_cue: int = 75,
+) -> List[Tuple[float, float, str]]:
+    """Build (start_sec, end_sec, text) cues aligned to rendered shot clip durations."""
+    script_vietsubs = script_vietsubs or {}
+    translated_dialogues = translated_dialogues or {}
+    cues: List[Tuple[float, float, str]] = []
+    current_offset = 0.0
+
+    for i, sd in enumerate(shot_descriptions):
+        shot_len = float(shot_durations[i]) if i < len(shot_durations) else 8.0
+        sd_idx = getattr(sd, "idx", i)
+        text = (
+            script_vietsubs.get(sd_idx)
+            or script_vietsubs.get(i)
+            or translated_dialogues.get(sd_idx)
+            or translated_dialogues.get(i)
+            or ""
+        ).strip()
+
+        if text and shot_len > 0.25:
+            lead = min(0.20, shot_len * 0.1)
+            tail = min(0.15, shot_len * 0.05)
+            usable = max(0.20, shot_len - lead - tail)
+            t0 = current_offset + lead
+            parts = _split_subtitle_text(text, max_chars=max_chars_per_cue)
+            if len(parts) == 1:
+                cues.append((t0, t0 + usable, parts[0]))
+            elif len(parts) >= 2:
+                gap = min(0.08, usable * 0.05)
+                avail = usable - gap
+                total_len = max(1, sum(len(p) for p in parts[:2]))
+                dur1 = avail * (len(parts[0]) / total_len)
+                min_part = 0.8 if avail >= 2.0 else avail * 0.35
+                dur1 = max(min_part, min(avail - min_part, dur1))
+                cues.append((t0, t0 + dur1, parts[0]))
+                cues.append((t0 + dur1 + gap, t0 + usable, parts[1]))
+
+        current_offset += shot_len
+
+    return cues
+
+
+def format_srt_timestamp(seconds: float) -> str:
+    ms_total = max(0, int(round(seconds * 1000)))
+    hours, rem = divmod(ms_total, 3600_000)
+    minutes, rem = divmod(rem, 60_000)
+    secs, millis = divmod(rem, 1000)
+    return f"{hours:02d}:{minutes:02d}:{secs:02d},{millis:03d}"
+
+
+def format_ass_timestamp(seconds: float) -> str:
+    cs_total = max(0, int(round(seconds * 100)))
+    hours, rem = divmod(cs_total, 360_000)
+    minutes, rem = divmod(rem, 6000)
+    secs, centis = divmod(rem, 100)
+    return f"{hours}:{minutes:02d}:{secs:02d}.{centis:02d}"
+
+
+def write_srt_subtitles(cues: List[Tuple[float, float, str]], output_path: str) -> str:
+    blocks = []
+    for idx, (start, end, text) in enumerate(cues, 1):
+        blocks.append(f"{idx}\n{format_srt_timestamp(start)} --> {format_srt_timestamp(end)}\n{text.strip()}")
+    out = Path(output_path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text("\n\n".join(blocks) + ("\n" if blocks else ""), encoding="utf-8")
+    return str(out)
+
+
+def _escape_ass_text(text: str) -> str:
+    return (
+        text.replace("\\", r"\\")
+        .replace("{", r"\{")
+        .replace("}", r"\}")
+        .replace("\r\n", "\n")
+        .replace("\n", r"\N")
     )
 
-def _unused_mix_video_and_audio(
-    video_path: str,
+
+def write_ass_subtitles(
+    cues: List[Tuple[float, float, str]],
     output_path: str,
-    voice_path: Optional[str] = None,
-    bgm_path: Optional[str] = None,
-    bgm_volume: float = 0.15,
+    font: str = "Arial",
+    font_size: int = 34,
+    play_res_x: int = 1280,
+    play_res_y: int = 720,
 ) -> str:
-    """Mix generated voiceover and optional background music into a video file."""
-    if not os.path.exists(video_path):
-        return video_path
+    header = (
+        "[Script Info]\n"
+        "ScriptType: v4.00+\n"
+        f"PlayResX: {play_res_x}\n"
+        f"PlayResY: {play_res_y}\n"
+        "ScaledBorderAndShadow: yes\n\n"
+        "[V4+ Styles]\n"
+        "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n"
+        f"Style: Default,{font},{font_size},&H00FFFFFF,&H0000FFFF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,2.4,1.2,2,48,48,30,1\n\n"
+        "[Events]\n"
+        "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
+    )
+    events = [
+        f"Dialogue: 0,{format_ass_timestamp(start)},{format_ass_timestamp(end)},Default,,0,0,0,,{_escape_ass_text(text.strip())}"
+        for start, end, text in cues
+    ]
+    out = Path(output_path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(header + "\n".join(events) + ("\n" if events else ""), encoding="utf-8")
+    return str(out)
 
-    video = VideoFileClip(video_path)
-    audio_clips = []
 
-    if voice_path and os.path.exists(voice_path):
-        try:
-            voice_clip = AudioFileClip(voice_path)
-            if voice_clip.duration > video.duration:
-                voice_clip = voice_clip.subclipped(0, video.duration)
-            audio_clips.append(voice_clip)
-        except Exception as e:
-            logger.warning(f"Error loading voiceover {voice_path}: {e}")
-
-    if bgm_path and os.path.exists(bgm_path):
-        try:
-            bgm_clip = AudioFileClip(bgm_path).with_volume_scaled(bgm_volume)
-            if bgm_clip.duration < video.duration:
-                import math
-                repeats = math.ceil(video.duration / bgm_clip.duration)
-                from moviepy import concatenate_audioclips
-                bgm_clip = concatenate_audioclips([bgm_clip] * repeats)
-            bgm_clip = bgm_clip.subclipped(0, video.duration)
-            audio_clips.append(bgm_clip)
-        except Exception as e:
-            logger.warning(f"Error loading BGM {bgm_path}: {e}")
-
-    if not audio_clips:
-        video.close()
-        if video_path != output_path:
-            import shutil
-            shutil.copyfile(video_path, output_path)
-        return output_path
-
+def _ffmpeg_supports_ass(exe: str) -> bool:
     try:
-        final_audio = CompositeAudioClip(audio_clips) if len(audio_clips) > 1 else audio_clips[0]
-        final_video = video.with_audio(final_audio)
-
-        temp_target = output_path + ".tmp.mp4"
-        final_video.write_videofile(
-            temp_target,
-            codec="libx264",
-            audio_codec="aac",
-            preset="fast",
-            logger=None
+        proc = subprocess.run(
+            [exe, "-hide_banner", "-filters"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=10,
         )
+        return proc.returncode == 0 and bool(re.search(r"\bass\b", proc.stdout))
+    except Exception:
+        return False
 
-        final_video.close()
-        for clip in audio_clips:
-            clip.close()
-        video.close()
 
-        if os.path.exists(output_path):
-            os.remove(output_path)
-        os.rename(temp_target, output_path)
-        return output_path
-    except Exception as e:
-        logger.error(f"Error mixing audio into video: {e}")
-        video.close()
-        for clip in audio_clips:
-            clip.close()
-        return video_path
+def _replace_file_with_retry(
+    src: Path,
+    dst: Path,
+    *,
+    attempts: int = 8,
+    initial_delay: float = 0.15,
+) -> Path:
+    last_exc: Optional[BaseException] = None
+    delay = initial_delay
+    for attempt in range(attempts):
+        try:
+            os.replace(src, dst)
+            return dst
+        except (PermissionError, OSError) as exc:
+            last_exc = exc
+            if attempt + 1 >= attempts:
+                break
+            time.sleep(delay)
+            delay = min(1.5, delay * 2.0)
+    assert last_exc is not None
+    raise last_exc
+
+
+def _resolve_ffmpeg_exe(require_ass: bool = False) -> str:
+    candidates: List[str] = []
+    try:
+        import imageio_ffmpeg
+        exe = imageio_ffmpeg.get_ffmpeg_exe()
+        if exe and os.path.exists(exe):
+            candidates.append(exe)
+    except Exception:
+        pass
+    which_exe = shutil.which("ffmpeg")
+    if which_exe and which_exe not in candidates:
+        candidates.append(which_exe)
+
+    if not candidates:
+        raise RuntimeError("No ffmpeg executable found via imageio_ffmpeg or PATH")
+
+    if require_ass:
+        for exe in candidates:
+            if _ffmpeg_supports_ass(exe):
+                return exe
+    return candidates[0]
+
+
+def burn_subtitles_into_video(video_path: str, ass_path: str, output_path: Optional[str] = None) -> str:
+    """Burn an ASS subtitle file into video_path while preserving audio track."""
+    src = Path(video_path).resolve()
+    ass = Path(ass_path).resolve()
+    dst = Path(output_path).resolve() if output_path else src
+    if not src.exists():
+        raise FileNotFoundError(f"Video not found for subtitle burn-in: {src}")
+    if not ass.exists():
+        raise FileNotFoundError(f"ASS subtitle file not found: {ass}")
+
+    ffmpeg = _resolve_ffmpeg_exe(require_ass=True)
+    work_dir = dst.parent
+    work_dir.mkdir(parents=True, exist_ok=True)
+
+    temp_ass: Optional[Path] = None
+    if ass.parent != work_dir:
+        temp_ass = work_dir / f".__sub_{os.getpid()}.ass"
+        shutil.copyfile(ass, temp_ass)
+        ass_name = temp_ass.name
+    else:
+        ass_name = ass.name
+
+    temp_out = work_dir / f".__burn_{dst.stem}.tmp.mp4"
+    cmd = [
+        ffmpeg,
+        "-y",
+        "-i",
+        str(src),
+        "-vf",
+        f"ass={ass_name}",
+        "-c:v",
+        "libx264",
+        "-preset",
+        "medium",
+        "-crf",
+        "18",
+        "-pix_fmt",
+        "yuv420p",
+        "-c:a",
+        "copy",
+        str(temp_out),
+    ]
+    try:
+        proc = subprocess.run(
+            cmd,
+            cwd=str(work_dir),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+        if proc.returncode != 0:
+            raise RuntimeError(f"FFmpeg subtitle burn-in failed (exit {proc.returncode}): {proc.stderr[-1000:]}")
+        try:
+            _replace_file_with_retry(temp_out, dst)
+            return str(dst)
+        except PermissionError:
+            fallback_dst = dst.with_name(f"{dst.stem}_subtitled{dst.suffix}")
+            _replace_file_with_retry(temp_out, fallback_dst)
+            logger.warning(f"Destination {dst} locked by another process; saved subtitled video to {fallback_dst}")
+            return str(fallback_dst)
+    finally:
+        if temp_ass is not None and temp_ass.exists():
+            temp_ass.unlink(missing_ok=True)
+        if temp_out.exists():
+            temp_out.unlink(missing_ok=True)
+
+
+async def translate_subtitles_with_chat_model(
+    chat_model: Any,
+    lines: Dict[int, str],
+    target_language: str = "Vietnamese",
+) -> Dict[int, str]:
+    """Translate spoken shot dialogue lines into target_language via chat_model."""
+    if not lines or chat_model is None:
+        return {}
+    if not (hasattr(chat_model, "ainvoke") or hasattr(chat_model, "invoke")):
+        return dict(lines)
+
+    payload = {str(k): v for k, v in lines.items()}
+    prompt = (
+        f"Translate the following numbered anime/film dialogue lines naturally into {target_language} for on-screen subtitles. "
+        "Keep them concise, vivid, and conversational. Preserve exact JSON keys and return ONLY valid JSON.\n\n"
+        f"{json.dumps(payload, ensure_ascii=False, indent=2)}"
+    )
+    try:
+        if hasattr(chat_model, "ainvoke"):
+            response = await chat_model.ainvoke(prompt)
+        else:
+            response = chat_model.invoke(prompt)
+        content = getattr(response, "content", response)
+        if isinstance(content, list):
+            content = "".join(str(item.get("text", item)) if isinstance(item, dict) else str(item) for item in content)
+        raw = str(content).strip()
+        unwrapped = strip_markdown_json_wrapper(raw)
+        candidates: List[str] = []
+        seen: set[str] = set()
+        for candidate in (raw, strip_trailing_commas(raw), unwrapped, strip_trailing_commas(unwrapped)):
+            if candidate and candidate not in seen:
+                seen.add(candidate)
+                candidates.append(candidate)
+        for source in (unwrapped, raw):
+            for block in iter_json_blocks(source):
+                for variant in (block, strip_trailing_commas(block)):
+                    if variant and variant not in seen:
+                        seen.add(variant)
+                        candidates.append(variant)
+
+        for candidate in candidates:
+            try:
+                parsed = json.loads(candidate)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(parsed, dict):
+                result = {int(k): str(v).strip() for k, v in parsed.items() if str(k).lstrip("-").isdigit() and str(v).strip()}
+                if result:
+                    return result
+    except Exception as exc:
+        logger.warning(f"Subtitle translation fallback failed ({exc}); keeping original lines.")
+    return dict(lines)

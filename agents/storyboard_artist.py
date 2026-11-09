@@ -6,6 +6,7 @@ from tenacity import retry, stop_after_attempt
 from langchain.chat_models.base import BaseChatModel
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import PydanticOutputParser
+from utils.robust_json_parser import TrailingCommaTolerantPydanticOutputParser as PydanticOutputParser
 from interfaces import CharacterInScene, ShotDescription, ShotBriefDescription
 
 from utils.retry import after_func
@@ -47,6 +48,7 @@ The user will provide the following input.
 - When describing visual elements, it is necessary to indicate the position of the element within the frame. For example, Character A is on the left side of the frame, facing toward the right, with a table in front of him. The table is positioned slightly to the left of the center of the frame. Ensure that invisible elements are not included. For instance, do not describe someone behind a closed door if they cannot be seen.
 - Avoid unsafe content (violence, discrimination, etc.) in visual descriptions. Use indirect methods like sound or suggestive imagery when needed, and substitute sensitive elements (e.g., ketchup for blood).
 - Assign at most one dialogue line per character per shot. Each line of dialogue should correspond to a shot.
+- Target ~8 seconds per shot (~7-8 shots per minute). When the user specifies a target runtime (e.g., 3 min -> ~23 shots, 5 min -> ~38 shots, 10 min -> ~75 shots), generate enough distinct shots to fulfill that duration with smooth narrative progression rather than compressing the story too short or lingering redundantly on near-static beats. Keep spoken audio concise (at most 1-2 short spoken lines totaling <= 20-25 words per shot) so voice/lip-sync fits inside 8 seconds without clipping.
 - Each shot requires an independent description without reference to each other.
 - When the shot focuses on a character, describe which specific body part the focus is on.
 - When describing a character, it is necessary to indicate the direction they are facing.

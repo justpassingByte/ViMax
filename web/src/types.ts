@@ -12,14 +12,23 @@ export type SessionSummary = {
 
 export type ConfigSection = {
   model_provider?: string;
-  model: string;
-  base_url: string;
-  api_key: string;
-  has_api_key: boolean;
+  model?: string;
+  base_url?: string;
+  api_key?: string;
+  has_api_key?: boolean;
+  voice?: string;
+  character_voices_text?: string;
+  bgm_file?: string;
+  bgm_volume?: string;
+  enabled?: boolean;
+  language?: string;
+  burn_in?: boolean;
+  font?: string;
+  font_size?: string;
 };
 
 export type AgentConfig = {
-  sections: Record<'llm' | 'image' | 'video' | 'audio' | 'embedding' | 'reranker', ConfigSection>;
+  sections: Record<'llm' | 'image' | 'video' | 'audio' | 'subtitles' | 'embedding' | 'reranker', ConfigSection>;
 };
 
 export type Artifact = {

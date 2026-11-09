@@ -45,4 +45,26 @@ describe('agent config store', () => {
     const root = await fixture();
     await expect(saveAgentConfig(root, {sections: {llm: {base_url: 'file:///tmp/key'}}})).rejects.toThrow(/http/);
   });
+
+  it('persists image.model_provider and subtitles settings', async () => {
+    const root = await fixture();
+    const updated = await saveAgentConfig(root, {
+      sections: {
+        image: {model_provider: 'muse2api', model: 'muse-image', base_url: 'http://127.0.0.1:18610/v1'},
+        subtitles: {enabled: true, language: 'vi', burn_in: true, font: 'Arial', font_size: '34'},
+      },
+    });
+    expect(updated.sections.image.model_provider).toBe('muse2api');
+    expect(updated.sections.subtitles).toEqual({
+      enabled: true,
+      language: 'vi',
+      burn_in: true,
+      font: 'Arial',
+      font_size: '34',
+    });
+    const saved = await readFile(path.join(root, 'configs', 'agent.local.yaml'), 'utf8');
+    expect(saved).toContain('model_provider: muse2api');
+    expect(saved).toContain('enabled: true');
+    expect(saved).toContain('font_size: 34');
+  });
 });

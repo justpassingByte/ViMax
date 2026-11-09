@@ -10,6 +10,7 @@ def _safe_relative(path: Path | str, base: Path) -> str:
 import asyncio
 from datetime import datetime
 from contextlib import contextmanager, redirect_stderr, redirect_stdout
+import inspect
 import json
 import logging
 import os
@@ -17,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from langchain.chat_models import init_chat_model
+from langchain_core.runnables import Runnable
 from langchain_openai import OpenAIEmbeddings
 from tenacity import RetryError
 
@@ -36,9 +38,10 @@ from tools.video_generator_openrouter_api import VideoGeneratorOpenRouterAPI
 from tools.video_generator_doubao_seedance_yunwu_api import VideoGeneratorDoubaoSeedanceYunwuAPI
 from tools.video_generator_veo_yunwu_api import VideoGeneratorVeoYunwuAPI
 
-from .config import api_provider_from_base_url, embedding_api_key, embedding_base_url, embedding_model, embedding_model_provider, image_api_key, image_base_url, image_model, llm_api_key, llm_base_url, llm_model, llm_model_provider, reranker_api_key, reranker_base_url, reranker_model, video_api_key, video_base_url, video_model, video_provider
+from .config import api_provider_from_base_url, embedding_api_key, embedding_base_url, embedding_model, embedding_model_provider, image_api_key, image_base_url, image_model, image_provider, llm_api_key, llm_base_url, llm_model, llm_model_provider, reranker_api_key, reranker_base_url, reranker_model, video_api_key, video_base_url, video_model, video_provider
 from .models import ToolResult
 from .config import image_num_candidates
+from utils.async_gate import AsyncConcurrencyGate
 from utils.image_selection import DEFAULT_IMAGE_CANDIDATES
 from .tools import ToolArgumentSchema, ToolRuntimeContext, ToolSpec
 
@@ -547,11 +550,11 @@ def _llm_request_timeout_seconds() -> float:
 
 
 def _narrative_max_tokens() -> int:
-    raw = os.environ.get("VIMAX_NARRATIVE_MAX_TOKENS", "4096")
+    raw = os.environ.get("VIMAX_NARRATIVE_MAX_TOKENS", "8192")
     try:
         return max(256, int(raw))
     except ValueError:
-        return 4096
+        return 8192
 
 
 def _pipeline_progress(runtime: ToolRuntimeContext | None, session_id: str, *, scene_index: int | None = None):
@@ -568,19 +571,103 @@ def _pipeline_progress(runtime: ToolRuntimeContext | None, session_id: str, *, s
     return emit
 
 
+def _invoke_kwargs(method: Any, config: Any, kwargs: dict[str, Any]) -> dict[str, Any]:
+    call_kwargs = dict(kwargs)
+    if config is not None:
+        try:
+            sig = inspect.signature(method)
+            params = sig.parameters
+            if "config" in params or any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values()):
+                call_kwargs["config"] = config
+        except (TypeError, ValueError):
+            call_kwargs["config"] = config
+    return call_kwargs
+
+
+class _GatedChatModel(Runnable):
+    """Serialize async chat calls behind a shared concurrency gate (e.g. single-account muse2api)."""
+
+    def __init__(self, inner: Any, gate: AsyncConcurrencyGate) -> None:
+        self._inner = inner
+        self._gate = gate
+
+    def invoke(self, input: Any, config: Any = None, **kwargs: Any) -> Any:
+        call_kwargs = _invoke_kwargs(self._inner.invoke, config, kwargs)
+        return self._inner.invoke(input, **call_kwargs)
+
+    async def ainvoke(self, input: Any, config: Any = None, **kwargs: Any) -> Any:
+        call_kwargs = _invoke_kwargs(self._inner.ainvoke, config, kwargs)
+        async with self._gate:
+            return await self._inner.ainvoke(input, **call_kwargs)
+
+    async def astream(self, input: Any, config: Any = None, **kwargs: Any):
+        call_kwargs = _invoke_kwargs(self._inner.astream, config, kwargs)
+        async with self._gate:
+            async for chunk in self._inner.astream(input, **call_kwargs):
+                yield chunk
+
+    def with_structured_output(self, *args: Any, **kwargs: Any) -> Any:
+        structured = self._inner.with_structured_output(*args, **kwargs)
+        return _GatedChatModel(structured, self._gate)
+
+    def bind_tools(self, *args: Any, **kwargs: Any) -> Any:
+        bound = self._inner.bind_tools(*args, **kwargs)
+        return _GatedChatModel(bound, self._gate)
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._inner, name)
+
+
 def _build_chat_model() -> Any:
     api_key = llm_api_key()
     if not api_key:
         raise RuntimeError("VIMAX_LLM_API_KEY or configs/agent.local.yaml llm.api_key is required for narrative planning")
-    return init_chat_model(
-        model=llm_model(),
-        model_provider=llm_model_provider(),
+    model = llm_model()
+    provider = llm_model_provider()
+    base_url = llm_base_url()
+    chat_model = init_chat_model(
+        model=model,
+        model_provider=provider,
         api_key=api_key,
-        base_url=llm_base_url(),
+        base_url=base_url,
         timeout=_llm_request_timeout_seconds(),
         max_retries=0,
         max_completion_tokens=_narrative_max_tokens(),
     )
+    gate = _shared_muse_media_gate(provider.strip().lower(), model, base_url)
+    if gate is not None:
+        return _GatedChatModel(chat_model, gate)
+    return chat_model
+
+
+_MUSE_MEDIA_GATES: dict[int, AsyncConcurrencyGate] = {}
+
+
+def _muse_media_concurrency() -> int:
+    raw = os.environ.get("VIMAX_MUSE_MEDIA_CONCURRENCY", "1")
+    try:
+        return max(1, int(raw))
+    except ValueError:
+        return 1
+
+
+def _is_muse_gateway(provider: str, model: str, base_url: str) -> bool:
+    return (
+        provider in ("muse", "muse ai", "muse2api")
+        or "muse" in model.lower()
+        or ":18610" in base_url.lower()
+    )
+
+
+def _shared_muse_media_gate(provider: str, model: str, base_url: str) -> AsyncConcurrencyGate | None:
+    if not _is_muse_gateway(provider, model, base_url):
+        return None
+    limit = _muse_media_concurrency()
+    gate = _MUSE_MEDIA_GATES.get(limit)
+    if gate is None:
+        gate = AsyncConcurrencyGate(limit)
+        _MUSE_MEDIA_GATES[limit] = gate
+    return gate
 
 
 def _build_image_generator() -> (
@@ -593,8 +680,19 @@ def _build_image_generator() -> (
         raise RuntimeError("VIMAX_IMAGE_API_KEY, VIMAX_LLM_API_KEY, or configs/agent.local.yaml image/llm api_key is required for image generation")
     model = image_model()
     base_url = image_base_url()
-    if api_provider_from_base_url(base_url) == "openrouter":
-        return ImageGeneratorOpenRouterAPI(api_key=api_key, model=model, base_url=base_url)
+    provider = image_provider().strip().lower()
+    if (
+        provider in ("openrouter", "openai", "muse", "muse ai", "muse2api", "zerakeyai")
+        or api_provider_from_base_url(base_url) == "openrouter"
+        or "zerakeyai.com" in base_url.lower()
+        or "muse" in model.lower()
+    ):
+        return ImageGeneratorOpenRouterAPI(
+            api_key=api_key,
+            model=model,
+            base_url=base_url,
+            concurrency_gate=_shared_muse_media_gate(provider, model, base_url),
+        )
     if "seedream" in model.lower() or "doubao" in model.lower():
         return ImageGeneratorDoubaoSeedreamYunwuAPI(api_key=api_key, model=model)
     return ImageGeneratorNanobananaYunwuAPI(api_key=api_key, model=model, base_url=base_url)
@@ -611,8 +709,17 @@ def _build_video_generator() -> (
     model = video_model()
     base_url = video_base_url()
     provider = video_provider().strip().lower()
-    if provider == "openrouter":
-        return VideoGeneratorOpenRouterAPI(api_key=api_key, model=model, base_url=base_url)
+    if (
+        provider in ("openrouter", "openai", "muse", "muse ai", "muse2api", "zerakeyai")
+        or "zerakeyai.com" in base_url.lower()
+        or "muse" in model.lower()
+    ):
+        return VideoGeneratorOpenRouterAPI(
+            api_key=api_key,
+            model=model,
+            base_url=base_url,
+            concurrency_gate=_shared_muse_media_gate(provider, model, base_url),
+        )
     if provider in ("yunwu", "seedance", "doubao"):
         if "seedance" in model.lower() or "doubao" in model.lower() or provider in ("seedance", "doubao"):
             ff2v = model.replace("-t2v-", "-i2v-") if "-t2v-" in model else model

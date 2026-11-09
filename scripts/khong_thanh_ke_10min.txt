@@ -1,0 +1,208 @@
+# ==============================================================================
+# KỊCH BẢN PHIM ĐIỆN ẢNH AI 10 PHÚT (600 GIÂY)
+# TÁC PHẨM CHUYỂN THỂ: TIỂU THUYẾT "TAM QUỐC DIỄN NGHĨA" (LA QUÁN TRUNG)
+# TRÍCH ĐOẠN KINH ĐIỂN: KHÔNG THÀNH KẾ (THE EMPTY FORT STRATEGY)
+# PHONG CÁCH HÌNH ẢNH: CINEMATIC HISTORICAL EPIC, 4K PHOTOREALISTIC, LIGHTING DRAMATIC
+# TỔNG SỐ PHÂN CẢNH: 4 SCENES - 30 SHOTS ĐIỆN ẢNH CHUẨN VIMAX
+# ==============================================================================
+
+[PROJECT_INFO]
+Title: Tam Quốc Diễn Nghĩa - Hồi Trống Không Thành Kế
+Duration: 600 seconds (10 phút)
+Genre: Lịch sử, Chiến tranh, Tâm lý chiến kinh điển
+Aspect Ratio: 16:9 (1280x720 hoặc 1920x1080)
+BGM: Tiếng đàn cổ cầm cô tịch, hòa quyện dàn nhạc giao hưởng trống trận dồn dập
+
+[CHARACTERS]
+1. Gia Cát Lượng (Khổng Minh Thừa tướng):
+   - Identifier: <Gia Cát Lượng>
+   - Description: Nam nhân trung niên trạc 45 tuổi, râu dài thanh tú, mặc áo đạo bào màu trắng thêu viền mây xanh, đầu đội mũ綸 cân (luân cân) lông hạc, tay cầm quạt lông ngỗng trắng. Khí chất điềm đạm, tiên phong đạo cốt, ánh mắt tinh anh thấu suốt càn khôn.
+   - Voice Hint: Nam trung niên, âm sắc trầm tĩnh, uyên bác, vang sáng (vi-VN-NamMinhNeural, rate -2%, pitch -1Hz).
+
+2. Tư Mã Ý (Trọng Đạt Đại Đô Đốc):
+   - Identifier: <Tư Mã Ý>
+   - Description: Nam đại tướng quân 50 tuổi, khoác chiến giáp bạc nặng chạm trổ hoa văn kỳ lân, áo choàng gấm đỏ sẫm tung bay trong gió cát, râu hùm hoa râm, ánh mắt sắc bén như chim ưng rình mồi nhưng ẩn chứa sự đa nghi tột độ.
+   - Voice Hint: Nam hùng dũng, dõng dạc, nội lực, đa nghi và quyết đoán (vi-VN-NamMinhNeural, rate +4%, pitch -4Hz).
+
+3. Tư Mã Chiêu (Phó tướng quân Ngụy):
+   - Identifier: <Tư Mã Chiêu>
+   - Description: Tướng trẻ 25 tuổi, giáp đen tuyền, tay nắm chuôi bảo kiếm, tính tình hiếu chiến, hăng hái, ánh mắt hừng hực lửa tham vọng.
+   - Voice Hint: Nam trẻ, nhanh, khẩn trương, hiếu chiến (vi-VN-NamMinhNeural, rate +8%, pitch +1Hz).
+
+4. Thám Mã Thục (Trinh sát tiền đồn):
+   - Identifier: <Thám Mã Thục>
+   - Description: Binh sĩ áo giáp da rách nát vì phong trần, ngực phập phồng, mồ hôi nhễ nhại, sắc mặt tái nhợt vì kinh hãi.
+   - Voice Hint: Nam trẻ, hốt hoảng, thở dốc, thất thanh (vi-VN-NamMinhNeural, rate +12%, pitch +2Hz).
+
+5. Quan Văn Thục (Lại bộ thị lang):
+   - Identifier: <Quan Văn Thục>
+   - Description: Quan chức áo tím tay áo rộng, chân run lẩy bẩy, mặt cắt không còn giọt máu.
+   - Voice Hint: Nam hốt hoảng, tuyệt vọng (vi-VN-NamMinhNeural, rate +6%, pitch +0Hz).
+
+6. Người Dẫn Chuyện (Narrator):
+   - Identifier: <Người Dẫn Chuyện>
+   - Voice Hint: Trầm ấm, truyền cảm, điện ảnh sử thi (vi-VN-NamMinhNeural, rate +0%, pitch -2Hz).
+
+---
+
+# ==============================================================================
+# HỒI 1: NGUY CƠ TUYỆT ĐỈNH (0:00 - 2:00 / 120 GIÂY)
+# Bối cảnh: Huyện Tây Thành cô độc, khói lửa chiến tranh Thục - Ngụy
+# ==============================================================================
+
+[Scene 1: Sóng Gió Nhai Đình - Tây Thành Nguy Khốn]
+Setting: Phủ huyện đường Tây Thành cũ kỹ, tường gạch phong trần giữa thung lũng đá hiểm trở. Cờ Thục Hán tả tơi trong gió lạnh rít từng cơn.
+
+Shot 1 (15.0s):
+Visual: Cảnh toàn siêu rộng (Extreme Wide Shot). Bầu trời u ám ráng chiều đỏ quạch, mặt đất cát bụi mù mịt. Một ngọn thành đất trơ trọi giữa hẻm núi heo hút.
+Audio: [Sound Effect] Tiếng gió rít qua khe núi, tiếng quạ kêu thê lương từ xa.
+[Speaker] Người Dẫn Chuyện: "Năm Kiến Hưng thứ sáu, Mã Tốc làm mất Nhai Đình. Quân Thục vỡ trận tháo lui. Đại Đô Đốc nước Ngụy là Tư Mã Ý thừa thắng kéo mười lăm vạn đại quân tiến thẳng về Tây Thành..."
+
+Shot 2 (15.0s):
+Visual: Cảnh theo dõi chuyển động nhanh (Tracking Shot). Bụi cát tung mù mịt, một con tuấn mã thở phì phò ngã quỵ ngay trước bậc thềm phủ huyện. <Thám Mã Thục> lăn mấy vòng trên nền đất, lồm cồm bò dậy, áo giáp rách nát bê bết bùn đất.
+Audio: [Sound Effect] Tiếng vó ngựa dồn dập nghẹt thở, tiếng ngựa hí vang kinh hãi rồi ngã sụp.
+
+Shot 3 (20.0s):
+Visual: Cảnh cận trung (Medium Close-Up). <Thám Mã Thục> quỳ rạp dưới sàn đại sảnh, hai tay chắp run rẩy, mặt trắng bệch nhìn lên bàn quan án.
+[Speaker] Thám Mã Thục: "Báo... Bẩm Thừa tướng! Đại quân Tư Mã Ý đã vượt qua ải Tiêu Quan, mười lăm vạn kỵ binh thiết giáp bụi bay rợp trời, chỉ còn cách Tây Thành chưa đầy hai mươi dặm!"
+
+Shot 4 (20.0s):
+Visual: Cảnh góc rộng ngang tầm mắt. Trong sảnh chỉ có vài chục văn thần và lính canh tàn binh. <Quan Văn Thục> hoảng hốt buông rơi cuốn sách trúc trên tay, chân run lẩy bẩy.
+Audio: [Sound Effect] Tiếng tre nứa rơi lách cách xuống sàn đá lạnh.
+[Speaker] Quan Văn Thục: "Trời ơi! Đại quân của ta đều đã theo Quan Hưng, Trương Bào đi tải lương. Trong thành chỉ còn hai ngàn năm trăm tàn binh ốm yếu... phen này Thục Hán nguy mất rồi!"
+
+Shot 5 (20.0s):
+Visual: Cảnh cận cảnh (Close-Up). <Gia Cát Lượng> ngồi tĩnh tọa sau bàn thư án bằng gỗ mun. Tay cầm quạt lông trắng phẩy nhẹ từng nhịp. Đôi mắt phượng khẽ khép lại rồi mở ra, ánh mắt sâu thẳm như đáy hồ mùa thu, không hề có một nét gợn hoang mang.
+[Speaker] Gia Cát Lượng: "Tư Mã Ý đến sớm hơn ta liệu. Thành không tướng giỏi, quân không quá ba ngàn, nếu cậy sức chống giữ, chẳng khác nào lấy trứng chọi đá."
+
+Shot 6 (15.0s):
+Visual: Cảnh trung cận (Medium Shot). <Gia Cát Lượng> đứng dậy hiên ngang, tà áo trắng tung bay theo cơn gió ùa vào cửa sổ. Ông đưa quạt lông ngỗng chỉ ra cửa, khẩu khí đanh thép truyền lệnh.
+[Speaker] Gia Cát Lượng: "Truyền lệnh ta: Hạ hết cờ quạt, giấu kín toàn bộ binh khí! Ai dám tự tiện đi lại hay lớn tiếng, chém không tha! Mở toang cả bốn cổng thành ra cho ta!"
+
+Shot 7 (15.0s):
+Visual: Cảnh toàn từ cổng thành nhìn ra ngoài. Bốn cánh cổng gỗ nặng nề từ từ kẽo kẹt mở toang. Ba mươi binh sĩ Thục cởi giáp, mặc áo vải thô giả làm dân thường, cầm chổi thong thả quét lá khô rải nước trước cổng.
+Audio: [Sound Effect] Tiếng cổng gỗ mở kẽo kẹt nặng nề vang vọng, tiếng chổi quét rào rạt thong thả.
+
+---
+
+# ==============================================================================
+# HỒI 2: ĐẠI QUÂN ÁP SÁT - KHÔNG THÀNH TRỐNG RỖNG (2:00 - 4:30 / 150 GIÂY)
+# Bối cảnh: 15 vạn quân Ngụy tràn đến chân thành Tây Thành
+# ==============================================================================
+
+[Scene 2: Thủy Triều Thiết Giáp & Tiếng Đàn Trên Lầu]
+Setting: Tường thành Tây Thành phủ đầy rêu phong. Bên ngoài là bình nguyên bao la, khói bụi bốc lên cao hàng trăm trượng.
+
+Shot 8 (20.0s):
+Visual: Cảnh flycam từ trên cao lướt xuống (Aerial Drone Shot). Một dải thiết giáp màu đen trải dài vô tận tới chân trời. Mười lăm vạn đại quân tinh nhuệ nhà Ngụy mang theo rừng giáo mác sáng loáng, cờ thêu chữ "TƯ MÃ" đỏ thẫm cuồn cuộn như sóng thần dâng trào.
+Audio: [Sound Effect] Tiếng đất rung chuyển ầm ầm dưới chân hàng vạn vó ngựa, tiếng chiêng trống thúc quân dồn dập.
+
+Shot 9 (20.0s):
+Visual: Cảnh cận trung (Medium Close-Up). <Tư Mã Ý> cưỡi chiến mã bạch câu dũng mãnh ở hàng quân tiên phong. Ánh mắt ông sắc lẻm quét qua bình nguyên, áo choàng đỏ bay phần phật, phong thái kiêu hùng của vị danh tướng bách chiến bách thắng.
+Audio: [Sound Effect] Tiếng gió rít, tiếng dây cương lách cách.
+[Speaker] Tư Mã Ý: "Gia Cát Lượng dùng quân cả đời cẩn trọng, nay cùng đường mạt lộ trốn vào cái thành hoang này. Hôm nay ắt là ngày tận số của Khổng Minh!"
+
+Shot 10 (20.0s):
+Visual: Điểm nhìn từ mắt Tư Mã Ý (POV Shot). Phía trước là tòa thành nhỏ Tây Thành. Cổng thành mở toang hoác không một bóng lính gác. Chỉ có vài người dân đang cặm cụi quét đường dưới chân thành.
+Audio: [Sound Effect] Tiếng vó ngựa chậm lại rồi dừng bặt. Không gian bỗng chìm vào yên lặng kỳ quặc.
+
+Shot 11 (20.0s):
+Visual: Cảnh cận hai người. <Tư Mã Chiêu> ghìm cương ngựa tiến lên bên cạnh phụ thân, mặt mày hớn hở chỉ gươm về phía trước.
+[Speaker] Tư Mã Chiêu: "Phụ thân xem kìa! Quân Thục sợ quá đã bỏ trốn hết rồi! Cổng thành mở toang, xin người cho con dẫn ba ngàn thiết kỵ ập vào san phẳng Tây Thành, bắt sống Gia Cát Lượng!"
+
+Shot 12 (20.0s):
+Visual: Cảnh siêu cận (Extreme Close-Up) vào đôi mắt <Tư Mã Ý>. Đôi lông mày nhíu chặt lại, đồng tử co nhỏ thể hiện sự hoài nghi sâu sắc. Ông giơ cao lệnh tiễn, quát dừng quân.
+Audio: [Sound Effect] Tiếng binh sĩ kéo dây cương ngựa hí lên rầm rập dừng bước.
+[Speaker] Tư Mã Ý: "Khoan đã! Lùi lại! Nhìn lên lầu thành xem kìa!"
+
+Shot 13 (25.0s):
+Visual: Cảnh ngước từ chân thành lên lầu cao (Low Angle Shot). Màn sương chiều lãng đãng quanh bao lơn. <Gia Cát Lượng> đang ngồi ngay ngắn trên chiếc chiếu cói, hai bên có hai tiểu đồng dâng lò hương nghi ngút khói. Trước mặt ông đặt cây đàn thất huyền cầm bóng loáng.
+Audio: [Sound Effect] Một làn gió nhẹ thổi qua lò hương, tiếng than hồng nổ lách tách khe khẽ.
+
+Shot 14 (25.0s):
+Visual: Cảnh cận đôi bàn tay ngọc thon dài của <Gia Cát Lượng>. Ngón tay ông khẽ gảy vào dây đàn. Một âm thanh trong trẻo, ngân vang vút lên không trung, xé tan bầu không khí ngột ngạt của chiến trận.
+Audio: [Sound Effect] Tiếng đàn cổ cầm vang lên thánh thót, ngân dài ngân xa giữa chiến trường.
+[Speaker] Người Dẫn Chuyện: "Giữa mười lăm vạn lưỡi đao kiếm sắc lạnh, tiếng đàn cổ cầm của Khổng Minh cất lên tựa như dòng suối nguồn thanh khiết giữa sa mạc lửa..."
+
+---
+
+# ==============================================================================
+# HỒI 3: TÂM LÝ CHIẾN - TIẾNG ĐÀN ĐỊNH GIANG SƠN (4:30 - 8:00 / 210 GIÂY)
+# Bối cảnh: Đấu trí cân não qua từng cung bậc âm nhạc
+# ==============================================================================
+
+[Scene 3: Tiếng Đàn Trong Gió & Cơn Ác Mộng Của Tư Mã Ý]
+Setting: Ánh nắng chiều xiên khoai qua làn khói hương trên lầu thành. Dưới chân thành là 15 vạn quân Ngụy nín thở lắng nghe.
+
+Shot 15 (25.0s):
+Visual: Cảnh trung cận (Medium Shot). <Gia Cát Lượng> vừa thong thả gảy đàn vừa mỉm cười thanh thản. Đôi môi ông khẽ cất lời ngâm vịnh, ánh mắt phong lưu nhìn xuống hàng vạn kỵ binh bên dưới.
+Audio: Tiếng đàn cổ cầm du dương, êm đềm như khúc hát nhân gian.
+[Speaker] Gia Cát Lượng: "Núi xanh còn đó, nước biếc mãi trôi. Tranh tranh đoạt đoạt, được mất một hồi cười..."
+
+Shot 16 (25.0s):
+Visual: Cảnh cận <Tư Mã Ý> đứng lặng trên lưng ngựa, tai nghểnh về phía trước, chăm chú phân tích từng nhịp phách của tiếng đàn.
+[Speaker] Tư Mã Ý: "Tiếng đàn không chút gợn sóng, nhịp điệu khoan thai, âm vận vững vàng như núi Thái Sơn... Kẻ trong lòng có nỗi sợ thì ngón tay ắt run, âm thanh ắt loạn. Sao tiếng đàn của hắn lại ung dung đến thế này?"
+
+Shot 17 (20.0s):
+Visual: Cảnh cận mặt đất trước cổng thành. Vài người lính giả dạng dân thường vẫn cặm cụi quét rác, bình thản như không có ai ở đó.
+Audio: [Sound Effect] Tiếng chổi quét cát rào rạt đều đặn, hòa nhịp cùng tiếng đàn.
+
+Shot 18 (25.0s):
+Visual: Cảnh trung cận <Tư Mã Chiêu> tức giận rút gươm ra khỏi vỏ nửa tấc, giục giã phụ thân lần nữa.
+Audio: [Sound Effect] Tiếng thép tuốt khỏi bao vang lên sắc nhọn.
+[Speaker] Tư Mã Chiêu: "Phụ thân chớ để hắn đánh lừa! Đây chỉ là hư trương thanh thế của Gia Cát Lượng mà thôi! Xin phụ thân hạ lệnh tiến công, con cam kết lấy đầu Khổng Minh dâng lên người!"
+
+Shot 19 (30.0s):
+Visual: Cảnh cận bàn tay <Gia Cát Lượng>. Bất ngờ, ngón trỏ và ngón cái búng mạnh vào dây chủ âm! Nhịp đàn đột ngột chuyển biến: Tiếng đàn réo rắt dồn dập như ngàn con sóng vỗ bờ, âm khí lạnh buốt xương tủy bủa vây chiến trường.
+Audio: [Sound Effect] Tiếng đàn cổ cầm dồn dập, sắc bén như lưỡi kiếm chém vào không khí.
+
+Shot 20 (30.0s):
+Visual: Cảnh hồi tưởng / Trừu tượng hóa tâm lý của Tư Mã Ý (Surreal Cinematic Vision). Trong ảo giác của Tư Mã Ý, sau những cánh cổng Tây Thành kia không phải là thành trống, mà là hàng ngàn nỏ liên châu Thục Hán đang nhắm thẳng vào đầu ông; những ngọn đuốc rực lửa và cạm bẫy địa lôi sẵn sàng phát nổ thiêu rụi toàn bộ mười lăm vạn quân Ngụy!
+Audio: [Sound Effect] Tiếng nỏ bắn ràn rạt, tiếng lửa bùng cháy dữ dội trong ảo tưởng.
+
+Shot 21 (25.0s):
+Visual: Cảnh siêu cận (Extreme Close-Up). Từng giọt mồ hôi lạnh chảy dài từ thái dương <Tư Mã Ý> xuống cằm. Bàn tay nắm dây cương của ông siết chặt đến trắng bệch.
+[Speaker] Tư Mã Ý: "Gia Cát Lượng cả đời không bao giờ mạo hiểm. Hắn mở cổng thành, ắt bên trong có mai phục vạn tiễn! Nếu ta xông vào, mười lăm vạn quân này sẽ chôn thây trong hẻm núi!"
+
+Shot 22 (30.0s):
+Visual: Cảnh cận lầu thành. Đang lúc cao trào tột độ... "TINH!". Dây đàn thứ bảy trên cây cổ cầm bất ngờ đứt phựt! Ngón tay Gia Cát Lượng dừng khựng lại trên không. Làn khói hương trầm khẽ lay động rồi tan biến.
+Audio: [Sound Effect] Tiếng dây đàn đứt vang lên đanh gọn, rồi cả không gian rơi vào tĩnh lặng tuyệt đối không một tiếng thở.
+
+---
+
+# ==============================================================================
+# HỒI 4: BẠT VÍA RÚT QUÂN & NỤ CƯỜI THẦN TOÁN (8:00 - 10:00 / 120 GIÂY)
+# Bối cảnh: Đại quân Ngụy tháo lui, Gia Cát Lượng thoát hiểm trong gang tấc
+# ==============================================================================
+
+[Scene 4: Nắng Chiều Rực Rỡ & Nụ Cười Tây Thành]
+Setting: Tường thành lúc hoàng hôn buông xuống, ánh dương vàng rực rực rỡ chiếu sáng Tây Thành.
+
+Shot 23 (20.0s):
+Visual: Cảnh cận <Tư Mã Ý>. Nghe tiếng dây đàn đứt, ông giật thót mình như trúng sét đánh ngang tai. Nỗi sợ bị tập kích tràn ngập tâm trí, ông vung đao quát lớn đến khản cả giọng!
+[Speaker] Tư Mã Ý: "Dây đàn đã đứt, sát khí đã lộ! Toàn quân nghe lệnh: Mau quay đầu ngựa! Lui quân gấp ba mươi dặm! Tránh bẫy mai phục của Khổng Minh!"
+
+Shot 24 (20.0s):
+Visual: Cảnh toàn siêu rộng (Extreme Wide Shot). Hàng vạn kỵ binh nhà Ngụy vội vã quay đầu tháo chạy, dẫm đạp lên nhau trong cát bụi mịt mù. Cờ xí ngổn ngang, tiếng ngựa hí hỗn loạn vang vọng cả hẻm núi.
+Audio: [Sound Effect] Tiếng trống thu quân hỗn loạn, tiếng hàng ngàn vó ngựa tháo lui như nước lũ tràn ngược.
+
+Shot 25 (20.0s):
+Visual: Cảnh từ trên lầu cao nhìn xuống thung lũng. Đại quân mười lăm vạn người rút đi nhanh như một cơn lốc xoáy, chỉ còn lại cát bụi mờ ảo dưới ánh hoàng hôn tĩnh lặng.
+Audio: [Sound Effect] Tiếng gió nhẹ thổi qua, không gian thanh bình tĩnh lặng trở lại.
+
+Shot 26 (20.0s):
+Visual: Cảnh trung cận (Medium Shot). <Gia Cát Lượng> buông cây đàn bị đứt dây xuống. Ông khẽ thở phào một hơi dài, đặt quạt lông ngỗng xuống bàn, chiếc áo bào trắng ướt đẫm mồ hôi sau lưng. Rồi ông ngửa mặt lên trời cười vang sảng khoái.
+Audio: [Sound Effect] Tiếng cười tự tin, hào sảng vang vọng lầu thành.
+[Speaker] Gia Cát Lượng: "Ha ha ha! Tư Mã Ý ơi là Tư Mã Ý! Ngươi thông minh cả một đời, nhưng rốt cuộc vẫn thua vì thói đa nghi của chính mình!"
+
+Shot 27 (20.0s):
+Visual: Cảnh góc rộng. Các quan văn và tướng sĩ Thục Hán từ trong các góc tối ùa ra lầu thành, đồng loạt quỳ sụp xuống đất, mắt đẫm lệ vì thoát chết trong gang tấc.
+[Speaker] Quan Văn Thục: "Thừa tướng tài trí siêu phàm! Lấy một cây đàn đẩy lùi mười lăm vạn đại quân, ngàn năm có một!"
+
+Shot 28 (20.0s):
+Visual: Cảnh cận cảnh (Close-Up). <Gia Cát Lượng> đứng bên lan can nhìn xa xăm về phía chân trời nơi quân Ngụy vừa rút lui. Ánh nắng hoàng hôn rọi sáng gương mặt phong trần đầy suy tư của người anh hùng cái thế.
+Audio: Dàn nhạc giao hưởng hùng tráng cất lên khúc nhạc khải hoàn bi tráng.
+[Speaker] Gia Cát Lượng: "Tư Mã Ý biết ta xưa nay cẩn trọng, không dám mạo hiểm, nên mới nghi ta có mai phục. Đời người đấu trí, lấy hư làm thực, lấy thực làm hư... hơn thua đôi khi chỉ nằm ở một chữ Tâm mà thôi."
+
+---
+[END OF SCRIPT - FINAL CUT COMPLETE]

@@ -468,3 +468,64 @@ class ViMaxAdapterTests(unittest.IsolatedAsyncioTestCase):
             result = await adapter.vimax_render_video({})
             self.assertFalse(result.ok)
             self.assertEqual(result.metadata["error_type"], "dependency_missing")
+
+    async def test_muse_chat_model_shares_serial_concurrency_gate_with_media_generators(self):
+        from langchain_core.messages import AIMessage
+        from langchain_core.output_parsers import StrOutputParser
+        from agent_runtime.vimax_adapters import _build_chat_model, _build_image_generator, _build_video_generator
+
+        with patch.dict("os.environ", {
+            "VIMAX_LLM_API_KEY": "m2a_test",
+            "VIMAX_LLM_MODEL": "muse-spark",
+            "VIMAX_LLM_BASE_URL": "http://127.0.0.1:18610/v1",
+            "VIMAX_IMAGE_API_KEY": "m2a_test",
+            "VIMAX_IMAGE_MODEL": "muse-image",
+            "VIMAX_IMAGE_BASE_URL": "http://127.0.0.1:18610/v1",
+            "VIMAX_VIDEO_API_KEY": "m2a_test",
+            "VIMAX_VIDEO_MODEL": "muse-video",
+            "VIMAX_VIDEO_BASE_URL": "http://127.0.0.1:18610/v1",
+            "VIMAX_MUSE_MEDIA_CONCURRENCY": "1",
+        }):
+            active = 0
+            max_active = 0
+
+            class FakeChat:
+                async def ainvoke(self, messages, config=None):
+                    nonlocal active, max_active
+                    active += 1
+                    max_active = max(max_active, active)
+                    await asyncio.sleep(0.03)
+                    active -= 1
+                    return AIMessage(content="ok")
+
+            async def fake_post(url, *, headers, payload, timeout):
+                nonlocal active, max_active
+                active += 1
+                max_active = max(max_active, active)
+                await asyncio.sleep(0.03)
+                active -= 1
+                import base64
+                from io import BytesIO
+                from PIL import Image
+                buf = BytesIO()
+                Image.new("RGB", (16, 9), "blue").save(buf, format="PNG")
+                return 200, {"data": [{"b64_json": base64.b64encode(buf.getvalue()).decode("ascii"), "media_type": "image/png"}]}
+
+            with patch("agent_runtime.vimax_adapters.init_chat_model", return_value=FakeChat()):
+                chat_model = _build_chat_model()
+                img_gen = _build_image_generator()
+                vid_gen = _build_video_generator()
+
+            self.assertIs(chat_model._gate, img_gen.concurrency_gate)
+            self.assertIs(img_gen.concurrency_gate, vid_gen.concurrency_gate)
+
+            chain = chat_model | StrOutputParser()
+            with patch("tools.image_generator_openrouter_api._post_json", fake_post):
+                text, img = await asyncio.gather(
+                    chain.ainvoke("hi"),
+                    img_gen.generate_single_image("cat"),
+                )
+
+            self.assertEqual(text, "ok")
+            self.assertEqual(img.data.size, (16, 9))
+            self.assertEqual(max_active, 1)

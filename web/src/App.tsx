@@ -720,7 +720,8 @@ function SlashCommandMenu({matches, contextPercent, onSelect}: {matches: SlashCo
 
 const CONFIG_SECTIONS: Array<{key: keyof AgentConfig['sections']; title: string; description: string}> = [
   {key: 'llm', title: 'Agent LLM', description: 'Planning, tool selection, and conversation'},
-  {key: 'audio', title: 'Voiceover & Audio', description: 'ElevenLabs or Edge-TTS narration & dialogue'},
+  {key: 'audio', title: 'Voiceover & Audio', description: 'Native audio, ElevenLabs, or Edge-TTS narration & dialogue'},
+  {key: 'subtitles', title: 'Subtitles', description: 'SRT/ASS subtitles and burn-in preferences'},
   {key: 'image', title: 'Image generation', description: 'Characters, keyframes, and shot frames'},
   {key: 'video', title: 'Video generation', description: 'Shot clips and final video'},
   {key: 'embedding', title: 'Embedding', description: 'Optional novel retrieval'},
@@ -742,11 +743,11 @@ function SettingsView({locale, t}: {locale: Locale; t: (typeof translations)[Loc
     return () => { cancelled = true; };
   }, []);
 
-  function update(section: keyof AgentConfig['sections'], field: keyof ConfigSection, value: string) {
+  function update(section: keyof AgentConfig['sections'], field: keyof ConfigSection, value: string | boolean) {
     setStatus('');
     setConfig((current) => {
       if (!current) return current;
-      const existing = current.sections[section] || {model: '', base_url: '', api_key: '', has_api_key: false};
+      const existing = current.sections[section] || {};
       return {
         sections: {
           ...current.sections,
@@ -787,9 +788,10 @@ function SettingsView({locale, t}: {locale: Locale; t: (typeof translations)[Loc
         {CONFIG_SECTIONS.map((definition) => (
           <ConfigSectionEditor
             key={definition.key}
+            sectionKey={definition.key}
             definition={{
-              title: definition.key === 'llm' ? t.sectionLlmTitle : definition.key === 'audio' ? t.sectionAudioTitle : definition.key === 'image' ? t.sectionImageTitle : definition.key === 'video' ? t.sectionVideoTitle : definition.key === 'embedding' ? t.sectionEmbeddingTitle : t.sectionRerankerTitle,
-              description: definition.key === 'llm' ? t.sectionLlmDesc : definition.key === 'audio' ? t.sectionAudioDesc : definition.key === 'image' ? t.sectionImageDesc : definition.key === 'video' ? t.sectionVideoDesc : definition.key === 'embedding' ? t.sectionEmbeddingDesc : t.sectionRerankerDesc,
+              title: definition.key === 'llm' ? t.sectionLlmTitle : definition.key === 'audio' ? t.sectionAudioTitle : definition.key === 'subtitles' ? t.sectionSubtitlesTitle : definition.key === 'image' ? t.sectionImageTitle : definition.key === 'video' ? t.sectionVideoTitle : definition.key === 'embedding' ? t.sectionEmbeddingTitle : t.sectionRerankerTitle,
+              description: definition.key === 'llm' ? t.sectionLlmDesc : definition.key === 'audio' ? t.sectionAudioDesc : definition.key === 'subtitles' ? t.sectionSubtitlesDesc : definition.key === 'image' ? t.sectionImageDesc : definition.key === 'video' ? t.sectionVideoDesc : definition.key === 'embedding' ? t.sectionEmbeddingDesc : t.sectionRerankerDesc,
             }}
             value={config.sections[definition.key]}
             onChange={(field, value) => update(definition.key, field, value)}
@@ -801,13 +803,43 @@ function SettingsView({locale, t}: {locale: Locale; t: (typeof translations)[Loc
   );
 }
 
-function ConfigSectionEditor({definition, value, onChange, t}: {
+function ConfigSectionEditor({sectionKey, definition, value, onChange, t}: {
+  sectionKey?: keyof AgentConfig['sections'];
   t: (typeof translations)[Locale];
   definition: {title: string; description: string};
   value?: ConfigSection;
-  onChange: (field: keyof ConfigSection, value: string) => void;
+  onChange: (field: keyof ConfigSection, value: string | boolean) => void;
 }) {
   const current = value || {model: '', base_url: '', api_key: '', has_api_key: false};
+  if (sectionKey === 'subtitles') {
+    return (
+      <section className="config-section">
+        <header><h2>{definition.title}</h2><p>{definition.description}</p></header>
+        <div className="config-fields">
+          <label className="config-toggle config-field-wide">
+            <input type="checkbox" checked={Boolean(current.enabled)} onChange={(event) => onChange('enabled', event.target.checked)} />
+            <span>{t.subtitlesEnabledLabel}</span>
+          </label>
+          <label className="config-toggle config-field-wide">
+            <input type="checkbox" checked={current.burn_in !== false} onChange={(event) => onChange('burn_in', event.target.checked)} />
+            <span>{t.subtitlesBurnInLabel}</span>
+          </label>
+          <label>
+            <span>{t.subtitlesLanguageLabel}</span>
+            <input value={current.language ?? 'vi'} onChange={(event) => onChange('language', event.target.value)} placeholder="vi" />
+          </label>
+          <label>
+            <span>{t.subtitlesFontLabel}</span>
+            <input value={current.font ?? 'Arial'} onChange={(event) => onChange('font', event.target.value)} placeholder="Arial" />
+          </label>
+          <label>
+            <span>{t.subtitlesFontSizeLabel}</span>
+            <input type="number" min="12" max="120" value={current.font_size ?? '34'} onChange={(event) => onChange('font_size', event.target.value)} placeholder="34" />
+          </label>
+        </div>
+      </section>
+    );
+  }
   return (
     <section className="config-section">
       <header><h2>{definition.title}</h2><p>{definition.description}</p></header>
@@ -815,12 +847,37 @@ function ConfigSectionEditor({definition, value, onChange, t}: {
         {current.model_provider !== undefined && (
           <label><span>{t.modelProvider}</span><input value={current.model_provider} onChange={(event) => onChange('model_provider', event.target.value)} /></label>
         )}
-        <label><span>{t.model}</span><input value={current.model} onChange={(event) => onChange('model', event.target.value)} /></label>
-        <label className="config-field-wide"><span>{t.baseUrl}</span><input value={current.base_url} onChange={(event) => onChange('base_url', event.target.value)} inputMode="url" /></label>
+        <label><span>{t.model}</span><input value={current.model ?? ''} onChange={(event) => onChange('model', event.target.value)} /></label>
+        <label className="config-field-wide"><span>{t.baseUrl}</span><input value={current.base_url ?? ''} onChange={(event) => onChange('base_url', event.target.value)} inputMode="url" /></label>
         <label className="config-field-wide">
           <span>{t.apiKey} <i className={current.has_api_key ? 'is-configured' : ''}>{current.has_api_key ? t.configured : t.notConfigured}</i></span>
-          <input type="password" value={current.api_key} onChange={(event) => onChange('api_key', event.target.value)} placeholder={current.has_api_key ? t.apiKeyPlaceholderConfigured : t.apiKeyPlaceholderEmpty} autoComplete="off" />
+          <input type="password" value={current.api_key ?? ''} onChange={(event) => onChange('api_key', event.target.value)} placeholder={current.has_api_key ? t.apiKeyPlaceholderConfigured : t.apiKeyPlaceholderEmpty} autoComplete="off" />
         </label>
+        {sectionKey === 'audio' && (
+          <>
+            <label className="config-field-wide">
+              <span>{t.voiceLabel}</span>
+              <input value={current.voice ?? ''} onChange={(event) => onChange('voice', event.target.value)} placeholder={t.voicePlaceholder} />
+            </label>
+            <label className="config-field-wide">
+              <span>{t.characterVoicesLabel}</span>
+              <textarea
+                rows={4}
+                value={current.character_voices_text ?? ''}
+                onChange={(event) => onChange('character_voices_text', event.target.value)}
+                placeholder={t.characterVoicesPlaceholder}
+              />
+            </label>
+            <label>
+              <span>{t.bgmFileLabel}</span>
+              <input value={current.bgm_file ?? ''} onChange={(event) => onChange('bgm_file', event.target.value)} placeholder={t.bgmFilePlaceholder} />
+            </label>
+            <label>
+              <span>{t.bgmVolumeLabel}</span>
+              <input type="number" step="0.05" min="0" max="1" value={current.bgm_volume ?? ''} onChange={(event) => onChange('bgm_volume', event.target.value)} placeholder="0.2" />
+            </label>
+          </>
+        )}
       </div>
     </section>
   );

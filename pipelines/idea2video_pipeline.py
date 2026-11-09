@@ -182,7 +182,7 @@ class Idea2VideoPipeline:
             pass
         else:
             try:
-                side_portrait_output = await self.character_portraits_generator.generate_side_portrait(character, front_portrait_path)
+                side_portrait_output = await self.character_portraits_generator.generate_side_portrait(character, front_portrait_path, style=style)
                 side_portrait_output.save(side_portrait_path)
             except Exception as e:
                 # gemini-2.5-flash-image intermittently (sometimes beyond
@@ -198,7 +198,7 @@ class Idea2VideoPipeline:
             pass
         else:
             try:
-                back_portrait_output = await self.character_portraits_generator.generate_back_portrait(character, front_portrait_path)
+                back_portrait_output = await self.character_portraits_generator.generate_back_portrait(character, front_portrait_path, style=style)
                 back_portrait_output.save(back_portrait_path)
             except Exception as e:
                 print(f"⚠️ Back portrait generation failed for {character.identifier_in_scene} after retries ({e}); reusing front portrait as fallback.")

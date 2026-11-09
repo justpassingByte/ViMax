@@ -35,3 +35,8 @@ AGENTS.md
 project_plan/
 project_working/
 user_idea/
+scratch/
+temp_*/
+*TEMP_MPY*
+*.tmp.mp4
+.working_dir_*/

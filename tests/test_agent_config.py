@@ -28,6 +28,12 @@ from agent_runtime.config import (
     video_base_url,
     video_model,
     video_provider,
+    audio_model_provider,
+    subtitles_enabled,
+    subtitles_language,
+    subtitles_burn_in,
+    subtitles_font,
+    subtitles_font_size,
 )
 
 
@@ -157,6 +163,28 @@ class AgentConfigTests(unittest.TestCase):
                 }
             }), encoding="utf-8")
             self.assertEqual(video_provider(tmp), "seedance")
+
+    def test_subtitles_and_native_audio_config_loading(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config_dir = Path(tmp) / "configs"
+            config_dir.mkdir()
+            (config_dir / "agent.local.yaml").write_text(yaml.safe_dump({
+                "audio": {"model_provider": "native", "bgm_file": ""},
+                "subtitles": {"enabled": True, "language": "vi", "burn_in": True, "font": "Arial", "font_size": 36},
+            }), encoding="utf-8")
+            with patch.dict(os.environ, {}, clear=True):
+                self.assertEqual(audio_model_provider(tmp), "native")
+                self.assertTrue(subtitles_enabled(tmp))
+                self.assertEqual(subtitles_language(tmp), "vi")
+                self.assertTrue(subtitles_burn_in(tmp))
+                self.assertEqual(subtitles_font(tmp), "Arial")
+                self.assertEqual(subtitles_font_size(tmp), 36)
+            with patch.dict(os.environ, {"VIMAX_SUBTITLES_ENABLED": "false", "VIMAX_SUBTITLES_BURN_IN": "0", "VIMAX_SUBTITLES_LANGUAGE": "en", "VIMAX_SUBTITLES_FONT": "Tahoma", "VIMAX_SUBTITLES_FONT_SIZE": "28"}, clear=True):
+                self.assertFalse(subtitles_enabled(tmp))
+                self.assertFalse(subtitles_burn_in(tmp))
+                self.assertEqual(subtitles_language(tmp), "en")
+                self.assertEqual(subtitles_font(tmp), "Tahoma")
+                self.assertEqual(subtitles_font_size(tmp), 28)
 
 
 if __name__ == "__main__":

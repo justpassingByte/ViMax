@@ -1,0 +1,25 @@
+services:
+  vimax-web:
+    build: .
+    image: vimax-studio:latest
+    container_name: vimax-web
+    restart: unless-stopped
+    ports:
+      - "${VIMAX_WEB_PORT:-4173}:4173"
+    environment:
+      - PYTHONUTF8=1
+      - PYTHONIOENCODING=utf-8
+      - VIMAX_WEB_HOST=0.0.0.0
+      - VIMAX_WEB_PORT=4173
+      - VIMAX_PYTHON_CMD=python3
+      - VIMAX_MUSE_MEDIA_CONCURRENCY=${VIMAX_MUSE_MEDIA_CONCURRENCY:-1}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      # Mount local runtime config directory without baking secrets into the Docker image
+      # Ensure configs/agent.local.yaml exists (cp configs/agent.example.yaml configs/agent.local.yaml)
+      - ./configs:/app/configs
+      - ./.working_dir:/app/.working_dir
+      - ./.vimax:/app/.vimax
+      # Optional: mount custom background music or fonts
+      # - ./assets/bgm.mp3:/app/assets/bgm.mp3:ro

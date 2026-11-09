@@ -55,6 +55,7 @@ Main Characters Introduction: Briefly introduce the core characters, including t
 - Logical Consistency: Ensure that event progression and character actions within the story have logical motives and internal consistency, avoiding abrupt or contradictory plots.
 - Show, Don't Tell: Reveal characters' personalities and emotions through their actions, dialogues, and details, rather than stating them flatly. For example, use "He clenched - his fist, nails digging deep into his palm" instead of "He was very angry."
 - Originality & Compliance: Generate original content based on the user's idea, avoiding direct plagiarism of well-known existing works. The generated content must be positive, healthy, and comply with general content safety policies.
+- Runtime & Shot Pacing (When Duration Is Requested): Downstream video clips average ~8 seconds per shot (~7-8 shots per minute). If the user requests a target runtime (e.g., 3 min -> ~23 shots, 5 min -> ~38 shots, 10 min -> ~75 shots across ~8-12 scenes), develop enough distinct scenes, dramatic turns, and dialogue beats to sustain that full runtime without filler.
 """
 
 human_prompt_template_develop_story = \
@@ -102,6 +103,7 @@ You will receive a story within <STORY> and </STORY> tags and a user requirement
 - Coherence and Fluidity: Ensure natural transitions between scenes and overall story flow. Avoid abrupt plot jumps.
 - Visual Enhancement Principles: All descriptions must be "filmable". Use concrete actions instead of abstract emotions (e.g., "He turns away to avoid eye contact" instead of "He feels ashamed"). Decribe rich environmental details include lighting, props, weather, etc., to enhance the atmosphere. Visualize character performances such as express internal states through facial expressions, gestures, and movements (e.g., "She bites her lip, her hands trembling" to imply nervousness).
 - Consistency: Ensure dialogue and actions align with the original story's intent, without deviating from the core plot.
+- Beat & Dialogue Pacing (~8s per Shot): Break each scene into concrete, filmable visual beats targeting ~7-8 shots per minute when a target duration is given (~75 shots for 10 minutes). Keep spoken lines concise (1-2 short natural sentences per beat, never dense monologues in a single shot) so dialogue fits cleanly within an 8-second video clip.
 """
 
 

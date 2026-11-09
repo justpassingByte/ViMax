@@ -1,0 +1,193 @@
+# ==============================================================================
+# KỊCH BẢN PHIM HOẠT HÌNH ĐIỆN ẢNH AI 10 PHÚT (600 GIÂY)
+# TỰA ĐỀ: HÓA THÂN THÀNH MÈO (ELECEED) - TẬP 1: THỨC TỈNH BÁ VƯƠNG
+# ĐỊNH DẠNG: GIỌNG SEIYUU TIẾNG NHẬT + KÈM FILE VIETSUB (.SRT) CHO CAPCUT
+# THỂ LOẠI: ACTION, COMEDY, URBAN SUPERNATURAL, SUPERHERO CAT
+# PHONG CÁCH HÌNH ẢNH: 3D ANIME CINEMATIC (UNREAL ENGINE 5)
+# TỔNG THỜI LƯỢNG: 600 GIÂY (ĐÚNG 10 PHÚT) - 4 HỒI - 28 SHOTS
+# ==============================================================================
+
+[PROJECT_INFO]
+Title: Hóa Thân Thành Mèo (Eleceed) - Tập 1: Thức Tỉnh Bá Vương
+Duration: 600 seconds (10 phút)
+Genre: Anime Action, Comedy, Urban Fantasy
+Subtitle File: scripts/eleceed_ep1_vietsub.srt (Kéo thẳng vào CapCut)
+
+[CHARACTERS & ELEVENLABS JAPANESE VOICES]
+1. Kayden Mèo Béo (<Kayden Mèo Béo>):
+   - Voice: Takumi - Calm & Healing Voice (ID: hV5AJXCCNGT56GPYPLiG)
+   - Personality: Giọng nam trầm, lạnh lùng, phong thái đế vương, khi cáu kỉnh vì bị coi là mèo thì tạo sự tương phản cực kỳ hài hước.
+
+2. Seo Jiwoo (<Seo Jiwoo>):
+   - Voice: Nagi - Bright & Upbeat Male (ID: XyteuzpsRwhuNEnFiQlX)
+   - Personality: Giọng nam sinh Shounen 17 tuổi, tươi sáng, trong trẻo, yêu động vật và ngây thơ.
+
+3. Sát Thủ Áo Đen (<Sát Thủ Áo Đen>):
+   - Voice: Kazuyuki Tanabe - Japanese male (ID: fcP8eveE6QZI7h9jHAcU)
+   - Personality: Giọng nam uy lực, tàn độc, lạnh lẽo của sát thủ thế giới ngầm.
+
+4. Người Dẫn Chuyện (<Người Dẫn Chuyện>):
+   - Voice: Aiko - Bright Japanese Narrator (ID: qtZU80V9mb7jMTtOMfcs)
+   - Personality: Giọng nữ Kanto truyền cảm, dẫn dắt câu chuyện chuẩn phong cách Anime chiếu rạp.
+
+---
+
+# ==============================================================================
+# HỒI 1: TỬ CHIẾN TRONG ĐÊM BÃO (0:00 - 2:30 / 150 GIÂY)
+# ==============================================================================
+
+[Scene 1: Sấm Sét Trên Đỉnh Thành Phố]
+Setting: Nóc tòa nhà chọc trời giữa đêm bão. Mưa như trút nước, sấm sét tím rạch ngang trời.
+
+Shot 1 (20.0s):
+Visual: Cảnh toàn siêu rộng (Extreme Wide Shot). Đỉnh tháp nhọn rực sáng trong bão đêm, một bóng người tóc trắng đứng giữa quầng lôi điện tím rực rỡ.
+Audio: [Sound Effect] Tiếng sấm gầm thét, mưa quất ràn rạt.
+[Speaker] Người Dẫn Chuyện: "Kakuseisha no urakai ni oite, Keiden to iu na wa muteki no shouchou de atta. Kono sekai no dono seiryoku nimo zokusanai, kokou no raitei..."
+(Vietsub: Trong thế giới ngầm của các dị nhân, Kayden là cái tên đại diện cho sự bất khả chiến bại. Một kẻ độc hành nắm giữ sức mạnh sấm sét tối thượng...)
+
+Shot 2 (20.0s):
+Visual: Cảnh cận trung hành động (Dynamic Medium Shot). Ba dị nhân bóng tối phóng giáo băng và hắc hỏa bao vây.
+Audio: [Sound Effect] Tiếng vũ khí năng lượng va chạm xé toạc không trung.
+
+Shot 3 (25.0s):
+Visual: Cảnh cận quay chậm (Slow Motion Close-Up). Khói lửa tan ra để lộ khuôn mặt Kayden tóc trắng tứa máu, mắt xanh kiêu hãnh cười gằn.
+[Speaker] Kayden Mèo Béo: "Kuzu domo ga... Kazu de katenai to omotta ka? Kono ore o konna toko de tayasuku koroseru to omou na yo!"
+(Vietsub: Lũ chuột nhắt các ngươi... cậy đông hiếp yếu sao? Nghĩ có thể dồn ta vào chỗ chết dễ dàng thế ư?!)
+
+Shot 4 (25.0s):
+Visual: Đòn hợp kích đen khổng lồ giáng xuống, Kayden cắn răng phát động lôi phù cấm thuật kim sắc rồi nổ tung biến mất trong màn mưa!
+Audio: [Sound Effect] Tiếng không gian vỡ vụn rền vang.
+
+Shot 5 (20.0s):
+Visual: Tia sáng vàng rơi xuống như sao băng, lao thẳng vào một con hẻm nhỏ tĩnh mịch.
+
+Shot 6 (20.0s):
+Visual: Góc thấp ngang mặt đất. Trong đống thùng carton ẩm ướt, một khối lông vàng cam ướt sũng đang co ro thở phì phò dưới nắng sớm.
+[Speaker] Người Dẫn Chuyện: "Kesshi no kakugo de inochi no tensou jutsu o hatsudou shi, ketsuro o hiraita raitei... Shikashi, sono daishou wa amari nimo omo sugiru mono datta."
+(Vietsub: Kích hoạt bí thuật chuyển dịch sinh mệnh trong tình thế thập tử nhất sinh, bá vương lôi điện đã trốn thoát... Nhưng cái giá phải trả thì không một ai ngờ tới.)
+
+Shot 7 (20.0s):
+Visual: Nắng sớm rọi sáng con hẻm bình yên của thành phố.
+
+---
+
+# ==============================================================================
+# HỒI 2: THẢM HỌA THỨC TỈNH CỦA MÈO BÉO (2:30 - 5:00 / 150 GIÂY)
+# ==============================================================================
+
+[Scene 2: Cơn Khủng Hoảng Của Mèo Mướp]
+Setting: Con ngõ lát gạch nhỏ cạnh khu nhà cũ, đầy những thùng xốp và cây xanh.
+
+Shot 8 (20.0s):
+Visual: Cảnh siêu cận. Hai mắt mèo nặng trĩu mở ra, ngáp dài: "Meo... oáp..."
+
+Shot 9 (25.0s):
+Visual: Kayden cố chống tay ngồi dậy, phát hiện bàn tay biến thành chân mèo đệm thịt hồng, bụng mỡ chạm đất "Bẹp!".
+[Speaker] Kayden Mèo Béo: "Na... nanda kore wa?! Ore no te wa doko da? Ore no kintou na karada wa ittai dou natta?!"
+(Vietsub: Cái... cái quái quỷ gì thế này?! Tay của ta đâu? Cơ thể chiến thần của ta đâu rồi?!)
+
+Shot 10 (25.0s):
+Visual: Soi bóng xuống vũng nước thấy chú mèo mướp lông vàng tròn vo như quả bóng len, má phúng phính.
+Audio: [Sound Effect] Tiếng sấm chớp nổ tung trong đầu.
+[Speaker] Kayden Mèo Béo: "Arienai... Uso darou?! Kono ore ga... Raitei no Keiden ga... Nande konna debuneko ni natterun da yo?!"
+(Vietsub: Không thể nào! Đùa nhau à?! Ta là Kayden! Lôi thần tối thượng! Sao ta lại chui vào xác một con MÈO MƯỚP BÉO Ị THẾ NÀY?!)
+
+Shot 11 (20.0s):
+Visual: Cố đứng 2 chân thị uy nhưng mông quá nặng, ngã ngửa chỏng 4 vó lăn lông lốc.
+Audio: [Sound Effect] Tiếng chân cào cào không khí, tiếng "bịch" ngã lăn.
+
+Shot 12 (20.0s):
+Visual: Cố rặn sấm sét, chỉ xịt ra tia điện bé xíu làm cháy xém cọng ria mép của chính mình.
+[Speaker] Kayden Mèo Béo: "Kuso ga... Chikara ga koko made ochite iru to wa. Konna sugata o teki ni miraretara, ichitari tomo owari da..."
+(Vietsub: Khốn kiếp! Năng lượng cạn kiệt đến mức này sao... Với hình hài này, nếu bị kẻ thù phát hiện, ta chết chắc!)
+
+Shot 13 (20.0s):
+Visual: Mèo béo lạch bạch lê cái bụng mỡ tiến ra miệng hẻm, dáng đi lúc lắc buồn cười.
+
+Shot 14 (20.0s):
+Visual: Một cái bóng người cao ráo đổ dài che khuất chú mèo béo.
+
+---
+
+# ==============================================================================
+# HỒI 3: CUỘC GẶP ĐỊNH MỆNH & CÁM DỖ XÚC XÍCH (5:00 - 7:30 / 150 GIÂY)
+# ==============================================================================
+
+[Scene 3: Dị Nhân Cuồng Mèo Xuất Hiện]
+Setting: Trước tiệm tạp hóa đầu hẻm, dưới bóng râm mái hiên.
+
+Shot 15 (20.0s):
+Visual: Jiwoo khoác ba lô học sinh đứng khựng lại, mắt sáng rực rỡ khi thấy cục bông vàng mập mạp.
+[Speaker] Seo Jiwoo: "Uwaaa... Nanto kawaii debuneko-chan nan darou! Doushite konna tokoro ni hitori de iru no?"
+(Vietsub: Oa... Trời đất ơi! Một bé mèo béo mầm đáng yêu quá đi mất! Sao em lại ở đây một mình thế này?)
+
+Shot 16 (25.0s):
+Visual: Kayden nhe nanh giơ vuốt khè khè đe dọa.
+[Speaker] Kayden Mèo Béo: "Ningen no gaki ga! Koko kara kiero, saramo nakuba dengeki de maruyake ni shite yaru zo!"
+(Vietsub: Thằng nhóc con kia! Cút ngay trước khi ta dùng lôi điện nướng chín ngươi thành tro!)
+
+Shot 17 (20.0s):
+Visual: Jiwoo cười thiên thần, cúi xuống bế xốc nách mèo béo lên, bụng mỡ đung đưa.
+[Speaker] Seo Jiwoo: "Yotto! Omoi ne kimi, nanakiro kurai aru n ja nai? Daijoubu da yo, kowagaranakute ii kara ne!"
+(Vietsub: Úi chà, em nặng thật đấy! Chắc phải bảy ký chứ chẳng đùa. Đừng sợ nhé, anh không làm đau em đâu!)
+
+Shot 18 (25.0s):
+Visual: Mặt Kayden đờ đẫn nhục nhã giữa không trung.
+[Speaker] Kayden Mèo Béo: "Ko... kono ore o dakikakaeru da to?! Kono gouka na karada ni furete oyobi da to iu no ka?! Hayaku orose!"
+(Vietsub: Hắn... hắn dám bế xốc nách ta?! Dám đụng vào thân thể tôn quý của ta?! Thả ta xuống mau!)
+
+Shot 19 (20.0s):
+Visual: Jiwoo mở ba lô rút ra cây xúc xích phô mai và hộp pate cá hồi bóc vỏ chìa ra.
+[Speaker] Seo Jiwoo: "Onaka ga suiterun da ne? Hora, kore tabete ii yo. Oishii sousēji da yo!"
+(Vietsub: Em đói bụng rồi đúng không? Ngoan nào, ăn xúc xích này đi, ngon lắm đó!)
+
+Shot 20 (20.0s):
+Visual: Mũi mèo hít hít, bụng réo ùng ục, nội tâm giằng xé dữ dội.
+[Speaker] Kayden Mèo Béo: "Kono nioi... Tamaranaku ii nioi da... Dame da, ore wa kedakai sonzai... Daga, onaka ga genkai da!"
+(Vietsub: Cái mùi này... thơm chết tiệt! Không được, ta là bậc tôn giả... Nhưng mà bụng ta đói rã rời rồi!)
+
+Shot 21 (20.0s):
+Visual: Kayden nhào vào ngoạm xúc xích nhồm nhoàm. Jiwoo gãi cằm, cổ mèo rung lên: "Rừ rừ..." phê không lối thoát.
+
+---
+
+# ==============================================================================
+# HỒI 4: SÁT THỦ ĐỘT KÍCH & LÔI THẦN TRẢI VUỐT (7:30 - 10:00 / 150 GIÂY)
+# ==============================================================================
+
+[Scene 4: Lôi Điện Bùng Nổ Trong Móng Vuốt Mèo]
+Setting: Cuối hẻm cụt. Chướng khí đen kịt trườn bò khắp mặt đất.
+
+Shot 22 (20.0s):
+Visual: Sát thủ áo đen bước ra từ bóng tối, mắt đỏ rực như máu, tay tỏa hắc khí.
+[Speaker] Sát Thủ Áo Đen: "Raikou no zanryuu enaji wa koko de kiete iru... Kozo, sono kemono o watase. Sa mo nakuba, tomo ni shine!"
+(Vietsub: Dấu vết tàn dư năng lượng lôi điện dừng lại ở đây... Thằng nhóc kia, giao con thú trên tay mày ra, hoặc chết cùng nó!)
+
+Shot 23 (20.0s):
+Visual: Jiwoo ôm chặt mèo béo vào ngực che chắn, mắt kiên định.
+[Speaker] Seo Jiwoo: "Anatatachi wa ittai dare da?! Kono ko wa tada no mujitsu na neko da, kesshite te o dasasenai!"
+(Vietsub: Các người là ai?! Đây chỉ là một con mèo vô tội, tôi không cho phép các người làm hại nó!)
+
+Shot 24 (20.0s):
+Visual: Kayden nằm trong lòng Jiwoo, mắt chấn động: "Thằng nhóc này... nó chỉ là người phàm, vậy mà lại liều mạng bảo vệ ta sao?"
+
+Shot 25 (25.0s):
+Visual: Sát thủ vung tay phóng 3 mũi kiếm bóng tối xé gió lao thẳng vào Jiwoo!
+
+Shot 26 (25.0s):
+Visual: Từ ngực Jiwoo, Mèo Béo Kayden nhảy vọt lên không trung! Mắt rực sáng sấm sét tím như sao sa!
+Audio: [Sound Effect] Sấm sét đại ngàn gầm thét dữ dội.
+[Speaker] Kayden Mèo Béo: "Kono Keiden no kainushi ni te o dasu yatsu wa... KIERU GA II!!"
+(Vietsub: Kẻ dám động vào người nuôi nấng của Kayden này... CÚT CHO TA!!)
+
+Shot 27 (20.0s):
+Visual: Móng vuốt mèo vung ra, một luồng lôi điện khổng lồ đập tan hắc khí, hất tung sát thủ bay xuyên thủng tường gạch nát vụn!
+Audio: [Sound Effect] Tiếng sấm nổ long trời, tường gạch đổ ầm ầm.
+
+Shot 28 (20.0s):
+Visual: Mèo béo rớt êm xuống đất thở phì phò ngủ say với cái bụng mỡ. Jiwoo mỉm cười ôm mèo dưới hoàng hôn rực rỡ. Nhạc giao hùng tráng khép lại tập 1.
+[Speaker] Người Dẫn Chuyện: "Raitei wa debuneko no sugata de mezameta. Soshite, tokubetsu na shounen to uchuu saikyou no neko no bouken wa... ima hajimatta bakari da!"
+(Vietsub: Bá vương đã thức tỉnh trong thân xác mèo béo. Và cuộc hành trình của cậu học sinh đặc biệt cùng chú mèo quyền năng nhất vũ trụ... giờ đây mới thực sự bắt đầu!)
+
+---
+[END OF SCRIPT]

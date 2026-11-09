@@ -191,10 +191,14 @@ async function startAgent({newSession, sessionId, projectName = ''}) {
   });
   setTimeout(async () => {
     if (agentProcess !== child) return;
-    const state = await readSessionState(repoRoot);
-    activeSessionId = state.activeSessionId || sessionId || activeSessionId;
-    broadcast({type: 'sessions_changed', ...state, activeSessionId});
-    broadcast({type: 'bridge_status', status: 'ready', message: 'Agent ready'});
+    try {
+      const state = await readSessionState(repoRoot);
+      activeSessionId = state.activeSessionId || sessionId || activeSessionId;
+      broadcast({type: 'sessions_changed', ...state, activeSessionId});
+      broadcast({type: 'bridge_status', status: 'ready', message: 'Agent ready'});
+    } catch {
+      // Ignore transient state-read failures while starting child process.
+    }
   }, 350);
 }
 
@@ -205,7 +209,9 @@ function consumeAgentLine(line) {
     if (event.type === 'session') activeSessionId = event.session?.active_session_id || activeSessionId;
     broadcast(event);
     if (event.type === 'session') {
-      readSessionState(repoRoot).then((state) => broadcast({type: 'sessions_changed', ...state}));
+      readSessionState(repoRoot)
+        .then((state) => broadcast({type: 'sessions_changed', ...state}))
+        .catch(() => undefined);
     }
   } catch {
     broadcast({type: 'terminal', stream: 'stdout', line});
@@ -219,18 +225,50 @@ function openEventStream(request, response) {
     Connection: 'keep-alive',
     'X-Accel-Buffering': 'no',
   });
-  response.write(`data: ${JSON.stringify({type: 'bridge_status', status: agentProcess ? 'ready' : 'idle', message: agentProcess ? 'Agent connected' : 'Agent idle'})}\n\n`);
   subscribers.add(response);
-  const heartbeat = setInterval(() => response.write(': keepalive\n\n'), 15_000);
-  request.on('close', () => {
-    clearInterval(heartbeat);
+  let cleaned = false;
+  let heartbeat;
+  const cleanup = () => {
+    if (cleaned) return;
+    cleaned = true;
+    if (heartbeat) clearInterval(heartbeat);
     subscribers.delete(response);
-  });
+  };
+  try {
+    response.write(`data: ${JSON.stringify({type: 'bridge_status', status: agentProcess ? 'ready' : 'idle', message: agentProcess ? 'Agent connected' : 'Agent idle'})}\n\n`);
+  } catch {
+    cleanup();
+    return;
+  }
+  heartbeat = setInterval(() => {
+    if (response.writableEnded || response.destroyed || response.closed) {
+      cleanup();
+      return;
+    }
+    try {
+      response.write(': keepalive\n\n');
+    } catch {
+      cleanup();
+    }
+  }, 15_000);
+  request.on('close', cleanup);
+  response.on('close', cleanup);
+  response.on('error', cleanup);
 }
 
 function broadcast(event) {
   const payload = `data: ${JSON.stringify(event)}\n\n`;
-  for (const subscriber of subscribers) subscriber.write(payload);
+  for (const subscriber of [...subscribers]) {
+    if (subscriber.writableEnded || subscriber.destroyed || subscriber.closed) {
+      subscribers.delete(subscriber);
+      continue;
+    }
+    try {
+      subscriber.write(payload);
+    } catch {
+      subscribers.delete(subscriber);
+    }
+  }
 }
 
 function stopAgent(reason) {

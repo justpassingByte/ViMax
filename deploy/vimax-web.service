@@ -1,0 +1,24 @@
+[Unit]
+Description=ViMax Studio Web Server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=vimax
+Group=vimax
+WorkingDirectory=/opt/ViMax
+Environment=PYTHONUTF8=1
+Environment=PYTHONIOENCODING=utf-8
+Environment=VIMAX_WEB_HOST=127.0.0.1
+Environment=VIMAX_WEB_PORT=4173
+Environment=VIMAX_PYTHON_CMD=/opt/ViMax/.venv/bin/python3
+Environment=VIMAX_MUSE_MEDIA_CONCURRENCY=1
+ExecStart=/usr/bin/node /opt/ViMax/web/server.mjs
+Restart=always
+RestartSec=5
+KillSignal=SIGTERM
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

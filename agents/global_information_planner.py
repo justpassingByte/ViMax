@@ -6,6 +6,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langchain.chat_models import init_chat_model
 from pydantic import BaseModel, Field
 from langchain.output_parsers import PydanticOutputParser
+from utils.robust_json_parser import TrailingCommaTolerantPydanticOutputParser as PydanticOutputParser
 from interfaces import Event, Scene
 from interfaces import CharacterInScene, CharacterInEvent, CharacterInNovel
 from tenacity import retry, stop_after_attempt

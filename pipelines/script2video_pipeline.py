@@ -1,4 +1,6 @@
 import os
+import re
+import inspect
 import shutil
 import json
 import logging
@@ -16,8 +18,37 @@ import yaml
 from interfaces import *
 from langchain.chat_models import init_chat_model
 from tools.render_backend import RenderBackend
+from agent_runtime.config import (
+    audio_api_key,
+    audio_base_url,
+    audio_bgm_file,
+    audio_bgm_volume,
+    audio_character_voices,
+    audio_model,
+    audio_model_provider,
+    audio_voice,
+    subtitles_burn_in,
+    subtitles_enabled,
+    subtitles_font,
+    subtitles_font_size,
+    subtitles_language,
+)
+from utils.audio import (
+    build_subtitle_cues,
+    burn_subtitles_into_video,
+    extract_all_dialogues_from_shot,
+    extract_spoken_dialogues_for_subtitles,
+    extract_vietsubs_from_script,
+    mix_multitrack_video_and_audio,
+    resolve_voice_and_prosody,
+    synthesize_speech,
+    translate_subtitles_with_chat_model,
+    write_ass_subtitles,
+    write_srt_subtitles,
+)
 from utils.provider_presets import resolve_chat_model_config
 from utils.image_selection import DEFAULT_IMAGE_CANDIDATES, image_candidate_count_from_config, validate_image_candidate_count
+from utils.video import normalize_clips_for_concat
 
 
 
@@ -81,6 +112,26 @@ def _scoped_progress(progress, **scope):
         _emit_render_progress(progress, stage, message, payload)
 
     return emit
+
+
+def _resolve_workspace_root(working_dir: str | Path) -> Path:
+    base = Path(working_dir).resolve()
+    for candidate in (base, *base.parents):
+        if (candidate / "configs" / "agent.local.yaml").is_file():
+            return candidate
+    return base
+
+
+def _file_sha256(path: str | Path) -> str:
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        for chunk in iter(lambda: handle.read(65536), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _subtitle_burn_marker_path(working_dir: str | Path, suffix: str) -> Path:
+    return Path(working_dir) / f".subtitles_burned_{suffix}.json"
 
 
 class Script2VideoPipeline:
@@ -310,84 +361,252 @@ class Script2VideoPipeline:
         await asyncio.gather(*tasks)
 
         final_video_path = os.path.join(self.working_dir, "final_video.mp4")
-        if os.path.exists(final_video_path):
+        workspace_root = _resolve_workspace_root(self.working_dir)
+        shot_durations: Optional[List[float]] = None
+        final_video_existed = os.path.exists(final_video_path)
+        if final_video_existed:
             print(f"🚀 Skipped concatenating videos, already exists.")
             _emit_render_progress(progress, "final_video_exists", "Final video already exists", {"path": final_video_path})
         else:
+            for stale_marker in Path(self.working_dir).glob(".subtitles_burned_*.json"):
+                stale_marker.unlink(missing_ok=True)
             print(f"🎬 Starting concatenating videos...")
             _emit_render_progress(progress, "concat_start", "Concatenating video clips", {"shot_count": len(shot_descriptions)})
-            video_clips = [
-                VideoFileClip(os.path.join(self.working_dir, "shots", f"{shot_description.idx}", "video.mp4"))
-                for shot_description in shot_descriptions
-            ]
-            final_video = concatenate_videoclips(video_clips)
-            final_video.write_videofile(final_video_path, codec="libx264", preset="medium")
+            video_clips = []
+            extra_clips = []
+            final_video = None
+            try:
+                video_clips = [
+                    VideoFileClip(os.path.join(self.working_dir, "shots", f"{shot_description.idx}", "video.mp4"))
+                    for shot_description in shot_descriptions
+                ]
+                shot_durations = [clip.duration for clip in video_clips]
+                normalized_clips, extra_clips = normalize_clips_for_concat(video_clips)
+                final_video = concatenate_videoclips(normalized_clips, method="compose")
+                final_video.write_videofile(final_video_path, codec="libx264", audio_codec="aac", preset="medium")
+            finally:
+                if final_video is not None:
+                    final_video.close()
+                for clip in extra_clips:
+                    clip.close()
+                for clip in video_clips:
+                    clip.close()
             print(f"☑️ Concatenated videos, saved to {final_video_path}.")
             _emit_render_progress(progress, "concat_done", "Final video concatenated", {"path": final_video_path})
 
-            # --- MULTI-CHARACTER AUDIO SYNTHESIS & BGM MIXING ---
+            # --- MULTI-CHARACTER AUDIO SYNTHESIS & NATIVE AUDIO / BGM MIXING ---
             try:
-                from utils.audio import (
-                    synthesize_speech,
-                    extract_dialogue_from_shot,
-                    resolve_voice_for_speaker,
-                    mix_multitrack_video_and_audio,
-                )
-                from agent_runtime.config import (
-                    audio_model_provider, audio_model, audio_base_url,
-                    audio_api_key, audio_voice, audio_bgm_file, audio_bgm_volume,
-                    audio_character_voices
-                )
+                provider = audio_model_provider(workspace_root).strip().lower()
+                bgm = audio_bgm_file(workspace_root)
+                bgm_resolved = None
+                if bgm:
+                    if os.path.exists(bgm):
+                        bgm_resolved = bgm
+                    else:
+                        candidate_bgm = os.path.join(str(workspace_root), bgm)
+                        if os.path.exists(candidate_bgm):
+                            bgm_resolved = candidate_bgm
+                vol = audio_bgm_volume(workspace_root)
+                speech_segments: List[Tuple[float, str]] = []
 
-                char_voice_map = audio_character_voices()
-                shot_durations = [clip.duration for clip in video_clips]
-                current_offset = 0.0
-                speech_segments = []
-
-                _emit_render_progress(progress, "audio_start", "Processing multi-character voiceovers")
-
-                for i, sd in enumerate(shot_descriptions):
-                    speaker, spoken = extract_dialogue_from_shot(
-                        getattr(sd, 'audio_desc', ''),
-                        getattr(sd, 'visual_desc', '')
-                    )
-                    if spoken:
-                        voice_to_use = resolve_voice_for_speaker(
-                            speaker=speaker,
-                            characters=characters,
-                            provider=audio_model_provider(),
-                            default_voice=audio_voice(),
-                            character_voices=char_voice_map,
+                if provider in {"native", "none", "off", "disabled", "video"}:
+                    _emit_render_progress(progress, "audio_native", "Keeping native video audio track", {"provider": provider})
+                    if bgm_resolved:
+                        _emit_render_progress(progress, "audio_mix", "Mixing BGM onto native video audio", {"bgm": bgm_resolved})
+                        mix_multitrack_video_and_audio(
+                            video_path=final_video_path,
+                            output_path=final_video_path,
+                            speech_segments=[],
+                            bgm_path=bgm_resolved,
+                            bgm_volume=vol,
+                            preserve_video_audio=True,
                         )
-                        shot_voice_file = os.path.join(self.working_dir, "shots", f"{sd.idx}", "speech.mp3")
-                        await synthesize_speech(
-                            text=spoken,
-                            output_path=shot_voice_file,
-                            provider=audio_model_provider(),
-                            api_key=audio_api_key(),
-                            voice=voice_to_use,
-                            model=audio_model(),
-                            base_url=audio_base_url(),
+                        _emit_render_progress(progress, "audio_done", "Native audio and BGM mixed successfully")
+                else:
+                    char_voice_map = audio_character_voices(workspace_root)
+                    current_offset = 0.0
+
+                    _emit_render_progress(progress, "audio_start", "Processing multi-character voiceovers", {"provider": provider})
+
+                    for i, sd in enumerate(shot_descriptions):
+                        dialogues = extract_all_dialogues_from_shot(
+                            getattr(sd, 'audio_desc', ''),
+                            getattr(sd, 'visual_desc', '')
                         )
-                        speech_segments.append((current_offset, shot_voice_file))
+                        shot_len = shot_durations[i] if i < len(shot_durations) else 8.0
+                        if dialogues:
+                            spacing = (shot_len - 0.8) / len(dialogues) if len(dialogues) > 1 else 0.25
+                            for d_idx, (speaker, spoken) in enumerate(dialogues):
+                                voice_to_use, rate, pitch = resolve_voice_and_prosody(
+                                    speaker=speaker,
+                                    characters=characters,
+                                    provider=provider,
+                                    default_voice=audio_voice(workspace_root),
+                                    character_voices=char_voice_map,
+                                )
+                                shot_voice_file = os.path.join(self.working_dir, "shots", f"{sd.idx}", f"speech_{d_idx}.mp3")
+                                await synthesize_speech(
+                                    text=spoken,
+                                    output_path=shot_voice_file,
+                                    provider=provider,
+                                    api_key=audio_api_key(workspace_root),
+                                    voice=voice_to_use,
+                                    model=audio_model(workspace_root),
+                                    base_url=audio_base_url(workspace_root),
+                                    rate=rate,
+                                    pitch=pitch,
+                                )
+                                diag_offset = current_offset + (0.25 if len(dialogues) == 1 else 0.25 + d_idx * spacing)
+                                speech_segments.append((diag_offset, shot_voice_file))
 
-                    shot_len = shot_durations[i] if i < len(shot_durations) else 5.0
-                    current_offset += shot_len
+                        current_offset += shot_len
 
-                if speech_segments or audio_bgm_file():
-                    bgm = audio_bgm_file()
-                    vol = audio_bgm_volume()
-                    _emit_render_progress(progress, "audio_mix", "Mixing multi-character voiceover & BGM into video", {"dialogue_count": len(speech_segments)})
-                    mix_multitrack_video_and_audio(
-                        video_path=final_video_path,
-                        output_path=final_video_path,
-                        speech_segments=speech_segments,
-                        bgm_path=bgm if bgm and os.path.exists(bgm) else None,
-                        bgm_volume=vol
-                    )
-                    _emit_render_progress(progress, "audio_done", "Multi-character voiceover and music mixed successfully")
+                    if speech_segments or bgm_resolved:
+                        _emit_render_progress(progress, "audio_mix", "Mixing multi-character voiceover & BGM into video", {"dialogue_count": len(speech_segments)})
+                        mix_multitrack_video_and_audio(
+                            video_path=final_video_path,
+                            output_path=final_video_path,
+                            speech_segments=speech_segments,
+                            bgm_path=bgm_resolved,
+                            bgm_volume=vol,
+                            preserve_video_audio=True,
+                        )
+                        _emit_render_progress(progress, "audio_done", "Multi-character voiceover and music mixed successfully")
             except Exception as e:
                 print(f"⚠️ Audio synthesis/mixing warning: {e}")
+                logging.warning(f"Audio synthesis/mixing warning: {e}")
+                _emit_render_progress(progress, "audio_warning", f"Audio synthesis/mixing skipped: {e}", {"error": str(e)})
+
+        # --- VIETSUB / MULTILINGUAL SUBTITLES GENERATION & BURN-IN ---
+        if subtitles_enabled(workspace_root):
+            try:
+                sub_lang = subtitles_language(workspace_root).strip().lower()
+                burn_in = subtitles_burn_in(workspace_root)
+                font = subtitles_font(workspace_root)
+                font_size = subtitles_font_size(workspace_root)
+                suffix = "vietsub" if sub_lang in {"vi", "vn", "vietnamese"} else sub_lang
+                srt_path = os.path.join(self.working_dir, f"final_video_{suffix}.srt")
+                ass_path = os.path.join(self.working_dir, f"final_video_{suffix}.ass")
+                marker_path = _subtitle_burn_marker_path(self.working_dir, suffix)
+                ass_existed_before = os.path.exists(ass_path)
+                cues = []
+
+                if not (final_video_existed and os.path.exists(srt_path) and ass_existed_before):
+                    effective_script = script or ""
+                    script_txt_path = os.path.join(self.working_dir, "script.txt")
+                    if "vietsub:" not in effective_script.lower() and os.path.exists(script_txt_path):
+                        effective_script = Path(script_txt_path).read_text(encoding="utf-8")
+
+                    script_vietsubs = (
+                        extract_vietsubs_from_script(effective_script)
+                        if sub_lang in {"vi", "vn", "vietnamese"}
+                        else {}
+                    )
+
+                    pending_translations: Dict[int, str] = {}
+                    for i, sd in enumerate(shot_descriptions):
+                        sd_idx = getattr(sd, "idx", i)
+                        if sd_idx in script_vietsubs or i in script_vietsubs:
+                            continue
+                        spoken_lines = extract_spoken_dialogues_for_subtitles(
+                            getattr(sd, "audio_desc", ""),
+                            getattr(sd, "visual_desc", ""),
+                        )
+                        if spoken_lines:
+                            pending_translations[sd_idx] = " ".join(line for _, line in spoken_lines)
+
+                    translated_dialogues: Dict[int, str] = {}
+                    if pending_translations:
+                        target_lang_name = "Vietnamese" if sub_lang in {"vi", "vn", "vietnamese"} else sub_lang
+                        translated_dialogues = await translate_subtitles_with_chat_model(
+                            self.chat_model,
+                            pending_translations,
+                            target_language=target_lang_name,
+                        )
+
+                    if shot_durations is None:
+                        shot_durations = []
+                        for sd in shot_descriptions:
+                            shot_mp4 = os.path.join(self.working_dir, "shots", f"{sd.idx}", "video.mp4")
+                            if os.path.exists(shot_mp4):
+                                clip = None
+                                try:
+                                    clip = VideoFileClip(shot_mp4)
+                                    shot_durations.append(float(clip.duration or 8.0))
+                                except Exception:
+                                    shot_durations.append(8.0)
+                                finally:
+                                    if clip is not None:
+                                        clip.close()
+                            else:
+                                shot_durations.append(8.0)
+
+                    cues = build_subtitle_cues(
+                        shot_descriptions=shot_descriptions,
+                        shot_durations=shot_durations or [8.0] * len(shot_descriptions),
+                        script_vietsubs=script_vietsubs,
+                        translated_dialogues=translated_dialogues,
+                    )
+                    if cues:
+                        write_srt_subtitles(cues, srt_path)
+                        write_ass_subtitles(cues, ass_path, font=font, font_size=font_size)
+
+                if os.path.exists(ass_path):
+                    ass_sha256 = _file_sha256(ass_path)
+                    cue_count = len(cues) if cues else sum(
+                        1 for line in Path(ass_path).read_text(encoding="utf-8").splitlines()
+                        if line.startswith("Dialogue:")
+                    )
+                    already_burned = False
+                    if final_video_existed:
+                        if marker_path.exists():
+                            try:
+                                marker_data = json.loads(marker_path.read_text(encoding="utf-8"))
+                                if isinstance(marker_data, dict) and marker_data.get("ass_sha256") == ass_sha256:
+                                    recorded_out = marker_data.get("output_path")
+                                    if recorded_out:
+                                        candidate_out = Path(self.working_dir) / recorded_out
+                                        if candidate_out.is_file():
+                                            if burn_in:
+                                                final_video_path = str(candidate_out)
+                                            already_burned = True
+                                    elif os.path.exists(final_video_path):
+                                        already_burned = True
+                            except (OSError, ValueError):
+                                pass
+                        if not already_burned and ass_existed_before and os.path.exists(final_video_path):
+                            fv_stat = Path(final_video_path).stat()
+                            ass_stat = Path(ass_path).stat()
+                            if fv_stat.st_mtime_ns > ass_stat.st_mtime_ns + 5_000_000_000:
+                                already_burned = True
+
+                    if burn_in and not already_burned:
+                        _emit_render_progress(progress, "subtitles_burn_start", "Burning subtitles into final video", {"cue_count": cue_count, "ass_path": ass_path})
+                        burned_path = await asyncio.to_thread(burn_subtitles_into_video, final_video_path, ass_path, final_video_path)
+                        final_video_path = burned_path
+                        marker_payload = {
+                            "ass_sha256": ass_sha256,
+                            "ass_path": Path(ass_path).name,
+                            "output_path": Path(final_video_path).name,
+                        }
+                        marker_path.write_text(json.dumps(marker_payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+                    _emit_render_progress(
+                        progress,
+                        "subtitles_done",
+                        "Generated subtitles successfully",
+                        {
+                            "cue_count": cue_count,
+                            "srt_path": srt_path,
+                            "ass_path": ass_path,
+                            "burned_in": burn_in,
+                            "output_path": final_video_path,
+                        },
+                    )
+            except Exception as e:
+                print(f"⚠️ Subtitle generation/burn-in warning: {e}")
+                logging.warning(f"Subtitle generation/burn-in warning: {e}")
+                _emit_render_progress(progress, "subtitles_warning", f"Subtitle generation/burn-in skipped: {e}", {"error": str(e)})
 
         _emit_render_progress(progress, "render_done", "Script2video render complete", {"final_video_path": final_video_path})
         return final_video_path
@@ -437,12 +656,21 @@ class Script2VideoPipeline:
                 else:
                     print(f"🖼️ Starting transition video generation for shot {first_shot_idx} from shot {parent_shot_idx}...")
                     _emit_render_progress(progress, "transition_video_start", f"Generating transition video for shot {first_shot_idx}", {"camera_idx": camera.idx, "shot_idx": first_shot_idx, "parent_shot_idx": parent_shot_idx})
-                    transition_video_output = await self.camera_image_generator.generate_transition_video(
-                        first_shot_visual_desc=shot_descriptions[parent_shot_idx].visual_desc,
-                        second_shot_visual_desc=shot_descriptions[first_shot_idx].visual_desc,
-                        first_shot_ff_path=parent_shot_ff_path,
-                        progress=_scoped_progress(progress, camera_idx=camera.idx, shot_idx=first_shot_idx, parent_shot_idx=parent_shot_idx, artifact="transition_video"),
-                    )
+                    workspace_root = _resolve_workspace_root(self.working_dir)
+                    suppress_subs = subtitles_enabled(workspace_root) and subtitles_burn_in(workspace_root)
+                    trans_kwargs: Dict[str, Any] = {
+                        "first_shot_visual_desc": shot_descriptions[parent_shot_idx].visual_desc,
+                        "second_shot_visual_desc": shot_descriptions[first_shot_idx].visual_desc,
+                        "first_shot_ff_path": parent_shot_ff_path,
+                        "progress": _scoped_progress(progress, camera_idx=camera.idx, shot_idx=first_shot_idx, parent_shot_idx=parent_shot_idx, artifact="transition_video"),
+                    }
+                    try:
+                        sig = inspect.signature(self.camera_image_generator.generate_transition_video)
+                        if "suppress_on_screen_subtitles" in sig.parameters:
+                            trans_kwargs["suppress_on_screen_subtitles"] = suppress_subs
+                    except (TypeError, ValueError):
+                        pass
+                    transition_video_output = await self.camera_image_generator.generate_transition_video(**trans_kwargs)
                     transition_video_output.save(transition_video_path)
                     print(f"☑️ Generated transition video for shot {first_shot_idx} from shot {parent_shot_idx}, saved to {transition_video_path}.")
                     _emit_render_progress(progress, "transition_video_done", f"Transition video for shot {first_shot_idx} generated", {"camera_idx": camera.idx, "shot_idx": first_shot_idx, "parent_shot_idx": parent_shot_idx, "path": transition_video_path})
@@ -587,11 +815,47 @@ class Script2VideoPipeline:
 
             print(f"🎬 Starting video generation for shot {shot_description.idx}...")
             _emit_render_progress(progress, "video_clip_start", f"Generating video clip for shot {shot_description.idx}", {"shot_idx": shot_description.idx, "frame_count": len(frame_paths)})
-            video_output = await self.video_generator.generate_single_video(
-                prompt=shot_description.motion_desc + "\n" + shot_description.audio_desc,
-                reference_image_paths=frame_paths,
-                progress=_scoped_progress(progress, shot_idx=shot_description.idx, artifact="video_clip"),
-            )
+            workspace_root = _resolve_workspace_root(self.working_dir)
+            suppress_subs = subtitles_enabled(workspace_root) and subtitles_burn_in(workspace_root)
+            clean_audio_desc = re.sub(
+                r"^\s*\(?\s*Vietsub\s*:[^\n]*\n?",
+                "",
+                getattr(shot_description, "audio_desc", "") or "",
+                flags=re.IGNORECASE | re.MULTILINE,
+            ).strip()
+            motion_clean = (shot_description.motion_desc or "").strip()
+            if suppress_subs:
+                formatted_audio = re.sub(
+                    r"\[Speaker\]\s*(?:Người Dẫn Chuyện|Narrator)\s*(?:\([^)]*\))?\s*:",
+                    "[Off-screen Japanese Narrator Voiceover ONLY (keep visible characters silent and eyes/mouth matching scene)]:",
+                    clean_audio_desc,
+                    flags=re.IGNORECASE,
+                )
+                sections = []
+                if motion_clean:
+                    sections.append(
+                        f"[Pure Visual Scene - Clean Textless Borderless Animation Only]\n{motion_clean}"
+                    )
+                if formatted_audio:
+                    sections.append(
+                        f"[Audio & Voiceover Track ONLY - Spoken Japanese Audio & SFX, No Text Shown on Screen]\n{formatted_audio}"
+                    )
+                video_prompt = "\n\n".join(sections).strip()
+            else:
+                video_prompt = f"{motion_clean}\n{clean_audio_desc}".strip()
+            gen_kwargs: Dict[str, Any] = {
+                "prompt": video_prompt,
+                "reference_image_paths": frame_paths,
+                "progress": _scoped_progress(progress, shot_idx=shot_description.idx, artifact="video_clip"),
+            }
+            try:
+                sig = inspect.signature(self.video_generator.generate_single_video)
+                params = sig.parameters
+                if "suppress_on_screen_subtitles" in params or any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values()):
+                    gen_kwargs["suppress_on_screen_subtitles"] = suppress_subs
+            except (TypeError, ValueError):
+                pass
+            video_output = await self.video_generator.generate_single_video(**gen_kwargs)
             video_output.save(video_path)
             print(f"☑️ Generated video for shot {shot_description.idx}, saved to {video_path}.")
             _emit_render_progress(progress, "video_clip_done", f"Generated video clip for shot {shot_description.idx}", {"shot_idx": shot_description.idx, "path": video_path})
@@ -609,9 +873,20 @@ class Script2VideoPipeline:
     ) -> ImageOutput:
         count = validate_image_candidate_count(self.num_image_candidates if num_candidates is None else num_candidates)
         if count == 1:
-            return await self.image_generator.generate_single_image(
-                prompt=prompt, reference_image_paths=reference_image_paths, size=size,
-            )
+            gen_kwargs: Dict[str, Any] = {
+                "prompt": prompt,
+                "reference_image_paths": reference_image_paths,
+                "size": size,
+            }
+            if progress is not None:
+                try:
+                    sig = inspect.signature(self.image_generator.generate_single_image)
+                    params = sig.parameters
+                    if "progress" in params or any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values()):
+                        gen_kwargs["progress"] = progress
+                except (TypeError, ValueError):
+                    pass
+            return await self.image_generator.generate_single_image(**gen_kwargs)
 
         save_dir = Path(candidates_save_dir) if candidates_save_dir else Path(self.working_dir) / "image_candidates" / uuid4().hex
         save_dir.mkdir(parents=True, exist_ok=True)
@@ -866,6 +1141,7 @@ class Script2VideoPipeline:
             self.generate_portraits_for_single_character(character, style, progress=progress)
             for character in characters
             if character.identifier_in_scene not in character_portraits_registry
+            and character.is_visible
         ]
         if tasks:
             for future in asyncio.as_completed(tasks):
@@ -906,8 +1182,12 @@ class Script2VideoPipeline:
             pass
         else:
             _emit_render_progress(progress, "character_portrait_side_start", f"Generating side portrait for {character.identifier_in_scene}", {"character_idx": character.idx, "identifier": character.identifier_in_scene})
-            side_portrait_output = await self.character_portraits_generator.generate_side_portrait(character, front_portrait_path)
-            side_portrait_output.save(side_portrait_path)
+            try:
+                side_portrait_output = await self.character_portraits_generator.generate_side_portrait(character, front_portrait_path, style=style)
+                side_portrait_output.save(side_portrait_path)
+            except Exception as exc:
+                print(f"⚠️ Side portrait generation failed for {character.identifier_in_scene} after retries ({exc}); reusing front portrait as fallback.")
+                shutil.copy(front_portrait_path, side_portrait_path)
             _emit_render_progress(progress, "character_portrait_side_done", f"Generated side portrait for {character.identifier_in_scene}", {"character_idx": character.idx, "identifier": character.identifier_in_scene, "path": side_portrait_path})
 
         back_portrait_path = os.path.join(character_dir, "back.png")
@@ -915,8 +1195,12 @@ class Script2VideoPipeline:
             pass
         else:
             _emit_render_progress(progress, "character_portrait_back_start", f"Generating back portrait for {character.identifier_in_scene}", {"character_idx": character.idx, "identifier": character.identifier_in_scene})
-            back_portrait_output = await self.character_portraits_generator.generate_back_portrait(character, front_portrait_path)
-            back_portrait_output.save(back_portrait_path)
+            try:
+                back_portrait_output = await self.character_portraits_generator.generate_back_portrait(character, front_portrait_path, style=style)
+                back_portrait_output.save(back_portrait_path)
+            except Exception as exc:
+                print(f"⚠️ Back portrait generation failed for {character.identifier_in_scene} after retries ({exc}); reusing front portrait as fallback.")
+                shutil.copy(front_portrait_path, back_portrait_path)
             _emit_render_progress(progress, "character_portrait_back_done", f"Generated back portrait for {character.identifier_in_scene}", {"character_idx": character.idx, "identifier": character.identifier_in_scene, "path": back_portrait_path})
 
         self.character_portrait_events[character.idx].set()

@@ -47,53 +47,62 @@ Trong ViMax, tạo ảnh đảm nhận 2 nhiệm vụ cốt lõi:
 1. **Thiết kế nhân vật (Character Sheet):** Tạo hình ảnh gốc để AI giữ chuẩn khuôn mặt, trang phục nhân vật suốt cả phim.
 2. **Khung hình chính (Keyframe):** Tạo các ảnh 16:9 sắc nét cho từng cảnh quay trước khi chuyển cho model video tạo chuyển động.
 
-**Các model khuyên dùng:**
-* **Lựa chọn 1 (KHUYÊN DÙNG - Nhanh nhất & Rẻ nhất): Google Gemini Flash Image qua Yunwu**
+**Các model & provider khuyên dùng (có thể chỉnh `model_provider` ngay trong Cài đặt Web UI):**
+* **Lựa chọn 1 (Miễn phí qua Web Gateway cục bộ / VPS): `muse2api`**
+  * `model_provider: muse2api`
+  * `model: muse-image`
+  * `base_url: http://127.0.0.1:18610/v1` (hoặc `http://muse2api:18610/v1` khi chạy Docker Compose)
+  * `api_key: <MUSE2API_KEY>`
+  * *(Tùy chọn)* Biến môi trường `VIMAX_MUSE_MEDIA_CONCURRENCY=1` (mặc định `1` để chạy tuần tự ổn định; nâng lên `2`–`3` nếu pool tài khoản muse2api có nhiều acc + proxy).
+* **Lựa chọn 2 (Nhanh ~2 - 4 giây/ảnh): Google Gemini Flash Image qua Yunwu**
+  * `model_provider: yunwu`
   * `model: gemini-3.1-flash-image-preview` (hoặc `gemini-2.5-flash-image-preview`)
   * `base_url: https://yunwu.ai`
-  * `api_key: <Key_Yunwu_Cua_Ban>` *(Dùng chung 1 key với LLM và Seedance video!)*
-  * Tốc độ: Cực nhanh, chỉ **~2 - 4 giây/ảnh**.
-* **Lựa chọn 2 (Đẹp nhất cho nhân vật & chân thực): FLUX qua OpenRouter**
+  * `api_key: <YUNWU_API_KEY>` *(Dùng chung 1 key với LLM và Seedance video!)*
+* **Lựa chọn 3 (Đẹp nhất cho nhân vật & chân thực): FLUX qua OpenRouter**
+  * `model_provider: openrouter`
   * `model: black-forest-labs/flux-1.1-pro` (hoặc `black-forest-labs/flux-schnell`, `openai/gpt-image-2`)
   * `base_url: https://openrouter.ai/api/v1`
-  * `api_key: <Key_OpenRouter_Cua_Ban>`
-  * Chi tiết khuôn mặt nhân vật, ánh sáng điện ảnh, nếp gấp trang phục hoàn hảo.
-* **Lựa chọn 3 (Đồng bộ ByteDance cùng Seedance): Doubao SeaDream qua Yunwu**
+  * `api_key: <OPENROUTER_API_KEY>`
+* **Lựa chọn 4 (Đồng bộ ByteDance cùng Seedance): Doubao SeaDream qua Yunwu**
   * `model: doubao-seedream-4-0-250828`
   * `base_url: https://yunwu.ai`
-  * `api_key: <Key_Yunwu_Cua_Ban>`
+  * `api_key: <YUNWU_API_KEY>`
 
-### 🎙️ Cấu hình Lồng Tiếng Đa Nhân Vật & Nhạc Nền (Multi-character Audio):
-Để bộ phim có đối thoại chân thực giữa các nhân vật (không phải 1 giọng độc thoại nhàm chán), ViMax hỗ trợ **phân vai nhiều giọng đọc tự động**:
-1. **Tự động nhận diện người nói:** Bóc tách nhân vật nào đang nói ở từng shot (`<Alice> says: "..."` hoặc `[Speaker] Alice: ...`).
-2. **Khớp giọng theo nhân vật:** Gọi đúng Voice ID tương ứng của từng diễn viên.
-3. **Tự động phân biệt giới tính:** Nếu nhân vật chưa khai báo Voice riêng, ViMax sẽ đọc hồ sơ nhân vật để tự động cấp giọng Nữ cho nhân vật nữ và giọng Nam cho nhân vật nam!
-4. **Khớp chuẩn Timeline video:** Mỗi câu thoại phát đúng tại thời điểm cú máy của nhân vật đó xuất hiện trên màn hình, hòa âm cùng nhạc nền BGM (tự động giảm nhỏ nhạc khi có tiếng nói).
+### 🎙️ Cấu hình Âm Thanh (`native` / ElevenLabs / Edge-TTS) & Phụ Đề Vietsub Tự Động:
+1. **Chế độ `native` (KHUYÊN DÙNG khi video đã có thoại & SFX gốc từ Veo / Muse / Seedance Audio):**
+   - Đặt `audio.model_provider: native` -> ViMax giữ nguyên giọng nói & hiệu ứng gốc của từng shot video, **không cần ElevenLabs**! Vẫn có thể trộn thêm nhạc nền `bgm_file`.
+2. **Chế độ lồng tiếng TTS (`elevenlabs` / `edge-tts`):**
+   - Tự động bóc tách người nói theo từng shot (`[Speaker] Alice: ...`), ánh xạ Voice ID riêng hoặc tự nhận diện Nam/Nữ, hòa âm khớp Timeline.
+3. **Phụ đề `.srt` / `.ass` & Burn-in Vietsub:**
+   - Bật mục **Phụ đề (Subtitles)** trong Web UI hoặc `configs/agent.local.yaml`:
+     - Trích xuất trực tiếp các dòng `(Vietsub: ...)` trong `script.txt`, hoặc tự động dịch thoại spoken bằng `Agent LLM`.
+     - Tạo đồng thời `final_video_vietsub.srt` & `final_video_vietsub.ass` khớp từng miligiây thời lượng thật từng clip và tự động gắn cứng (`libass` FFmpeg) vào `final_video.mp4`.
 
-**Cách cấu hình trong file `configs/agent.local.yaml`:**
 ```yaml
 audio:
-  model_provider: elevenlabs    # elevenlabs hoặc edge-tts
-  model: eleven_multilingual_v2
-  base_url: https://api.elevenlabs.io/v1
-  api_key: 'sk_...'
-  voice: 21m00Tcm4TlvDq8ikWAM   # Giọng mặc định / Người dẫn chuyện
+  model_provider: native        # native, elevenlabs, hoặc edge-tts
+  bgm_file: ''
+  bgm_volume: 0.15
 
-  # Phân vai giọng riêng cho từng nhân vật:
-  character_voices:
-    Alice: EXAVITQu4vr4xnSDxMaL     # Giọng nữ chính (Bella trên ElevenLabs)
-    Bob: pNInz6obpgDQGcFmaJgB       # Giọng nam chính (Adam trên ElevenLabs)
-    Narrator: 21m00Tcm4TlvDq8ikWAM   # Giọng dẫn chuyện
-    female: EXAVITQu4vr4xnSDxMaL    # Giọng nữ mặc định
-    male: pNInz6obpgDQGcFmaJgB      # Giọng nam mặc định
-
-  bgm_file: 'C:/nhac_nen.mp3'       # File nhạc nền (nếu có)
-  bgm_volume: 0.15                  # Âm lượng nhạc nền
+subtitles:
+  enabled: true
+  language: vi
+  burn_in: true
+  font: Arial
+  font_size: 34
 ```
-*(Nếu dùng **Edge-TTS miễn phí**, bạn chỉ cần đổi Voice ID thành `vi-VN-HoaiMyNeural` cho giọng nữ và `vi-VN-NamMinhNeural` cho giọng nam).*
 
-### 🤖 LLM (Biên kịch & Đạo diễn):
-* `gpt-4o-mini`, `deepseek-chat`, hoặc `gemini-2.5-flash`
+### 🤖 LLM (Biên kịch & Đạo diễn - `AgentLoop`):
+* Hỗ trợ các model có **OpenAI Tool Calling / Function Calling** tốt: `gpt-4o`, `gpt-5.x`, `claude`, `gemini-2.5-flash` / `pro`, `deepseek-chat`.
+* **Lưu ý quan trọng khi dùng `muse2api`:** Trong `muse2api`, `MUSE2API_TOOL_PROTOCOL` mặc định bằng `0` (chỉ tương thích tham số, không giả lập JSON tool call qua web chat muse.ai). Vì vậy cho Web UI / `AgentLoop` (`main_agent.py`), hãy trỏ `llm` tới endpoint hỗ trợ tool-calling thực thụ (OpenAI / Yunwu / OpenRouter / Gemini), và dùng `muse2api` cho `image` + `video`.
+
+### ⏱️ Quy Hoạch Thời Lượng Phim (~8 giây / Shot):
+* Mỗi video clip đầu ra trung bình dài **~8 giây** (~**7–8 shots / phút**):
+  * Video 3 phút ≈ **23 shots**
+  * Video 5 phút ≈ **38 shots**
+  * Video 10 phút ≈ **75 shots**
+* Mỗi shot chỉ nên viết **1–2 câu thoại ngắn (≤ 20–25 từ)** để thoại kịp dứt trọn vẹn trong 8 giây.
 
 ---
 
@@ -128,3 +137,29 @@ audio:
 * **Nút chuyển đổi ngôn ngữ (VI / EN):** Nằm ở góc trên bên phải màn hình để bạn dễ dàng chuyển qua lại giữa Tiếng Việt và Tiếng Anh.
 * **Bảng Storyboard (Cột bên phải):** Bấm vào biểu tượng bảng phân cảnh để xem chi tiết từng shot quay, mô tả chuyển động camera và khung hình chính trước khi video được dựng.
 * **Lệnh `/compact`:** Khi dự án quá dài hoặc nhiều cảnh, gõ `/compact` trong khung chat để nén bộ nhớ ngữ cảnh.
+
+---
+
+## 🌐 5. Triển Khai 24/7 Trên Linux VPS (Docker & systemd)
+
+### Cách A: Chạy bằng Docker Compose (Khuyên dùng - tích hợp sẵn FFmpeg libass + Font tiếng Việt + Node + Python)
+```bash
+# 1. Tạo file cấu hình cục bộ từ mẫu và điền API keys (tuyệt đối không commit agent.local.yaml)
+cp configs/agent.example.yaml configs/agent.local.yaml
+
+# 2. Build Web UI & khởi chạy container chạy nền 24/7
+docker compose -f docker-compose.vps.yml up -d --build
+```
+* Truy cập Web Studio tại: `http://<IP_VPS>:4173` (khuyên đặt sau Nginx/Caddy HTTPS + Basic Auth hoặc SSH Tunnel).
+* Nếu chạy cùng `muse2api` trên cùng VPS host, đặt `base_url: http://host.docker.internal:18610/v1` trong `agent.local.yaml` (`docker-compose.vps.yml` đã bật sẵn `host.docker.internal`).
+
+### Cách B: Chạy trực tiếp trên Ubuntu/Debian bằng `systemd`
+```bash
+sudo apt-get update && sudo apt-get install -y ffmpeg fonts-dejavu-core fonts-noto-core nodejs npm
+# Tạo venv Python (>=3.12), cài dependencies từ pyproject.toml & build web/dist:
+python3 -m venv .venv && ./.venv/bin/pip install uv && ./.venv/bin/uv pip install --python ./.venv/bin/python -r pyproject.toml
+(cd web && npm ci && npm run build)
+# Cài service systemd mẫu (chỉnh sửa User / WorkingDirectory nếu cần):
+sudo cp deploy/vimax-web.service /etc/systemd/system/vimax-web.service
+sudo systemctl daemon-reload && sudo systemctl enable --now vimax-web
+```

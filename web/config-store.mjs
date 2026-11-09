@@ -4,9 +4,10 @@ import {parse, stringify} from 'yaml';
 
 const SECTION_FIELDS = {
   llm: ['model_provider', 'model', 'base_url'],
-  image: ['model', 'base_url'],
+  image: ['model_provider', 'model', 'base_url'],
   video: ['model_provider', 'model', 'base_url'],
-  audio: ['model_provider', 'model', 'base_url'],
+  audio: ['model_provider', 'model', 'base_url', 'voice', 'bgm_file', 'bgm_volume'],
+  subtitles: ['enabled', 'language', 'burn_in', 'font', 'font_size'],
   embedding: ['model_provider', 'model', 'base_url'],
   reranker: ['model', 'base_url'],
 };
@@ -27,10 +28,35 @@ export async function saveAgentConfig(repoRoot, input) {
     const current = payload[section] && typeof payload[section] === 'object' ? payload[section] : {};
     for (const field of fields) {
       if (!(field in update)) continue;
-      current[field] = validatedValue(update[field], `${section}.${field}`, 2_048);
+      if (section === 'subtitles' && (field === 'enabled' || field === 'burn_in')) {
+        current[field] = validatedBoolean(update[field], `${section}.${field}`);
+      } else if (section === 'subtitles' && field === 'font_size') {
+        current[field] = validatedInteger(update[field], `${section}.${field}`, 12, 120);
+      } else {
+        current[field] = validatedValue(update[field], `${section}.${field}`, 2_048);
+      }
     }
-    if (typeof update.api_key === 'string' && update.api_key.trim()) {
+    if (section !== 'subtitles' && typeof update.api_key === 'string' && update.api_key.trim()) {
       current.api_key = validatedValue(update.api_key, `${section}.api_key`, 8_192);
+    }
+    // Handle character voices mapping for audio section
+    if (section === 'audio') {
+      if (typeof update.character_voices_text === 'string') {
+        const charMap = {};
+        for (const line of update.character_voices_text.split('\n')) {
+          const trimmed = line.trim();
+          if (!trimmed || trimmed.startsWith('#')) continue;
+          const idx = trimmed.indexOf('=') !== -1 ? trimmed.indexOf('=') : trimmed.indexOf(':');
+          if (idx !== -1) {
+            const charName = trimmed.slice(0, idx).trim();
+            const voiceId = trimmed.slice(idx + 1).trim();
+            if (charName && voiceId) charMap[charName] = voiceId;
+          }
+        }
+        current.character_voices = charMap;
+      } else if (update.character_voices && typeof update.character_voices === 'object') {
+        current.character_voices = update.character_voices;
+      }
     }
     payload[section] = current;
   }
@@ -59,13 +85,62 @@ function publicConfig(payload) {
   const sections = {};
   for (const [section, fields] of Object.entries(SECTION_FIELDS)) {
     const source = payload[section] && typeof payload[section] === 'object' ? payload[section] : {};
+    if (section === 'subtitles') {
+      sections[section] = {
+        enabled: parseBool(source.enabled, false),
+        language: typeof source.language === 'string' && source.language.trim() ? source.language.trim() : 'vi',
+        burn_in: parseBool(source.burn_in, true),
+        font: typeof source.font === 'string' && source.font.trim() ? source.font.trim() : 'Arial',
+        font_size: source.font_size !== undefined && source.font_size !== null ? String(source.font_size) : '34',
+      };
+      continue;
+    }
     const result = {};
     for (const field of fields) result[field] = typeof source[field] === 'string' ? source[field] : '';
     result.api_key = '';
     result.has_api_key = Boolean(typeof source.api_key === 'string' && source.api_key.trim());
+    if (section === 'audio') {
+      const cv = source.character_voices && typeof source.character_voices === 'object' ? source.character_voices : {};
+      result.character_voices = cv;
+      result.character_voices_text = Object.entries(cv)
+        .map(([k, v]) => `${k} = ${v}`)
+        .join('\n');
+      result.voice = typeof source.voice === 'string' ? source.voice : '';
+      result.bgm_file = typeof source.bgm_file === 'string' ? source.bgm_file : '';
+      result.bgm_volume = source.bgm_volume !== undefined ? String(source.bgm_volume) : '0.12';
+    }
     sections[section] = result;
   }
   return {sections};
+}
+
+function parseBool(value, fallback) {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return Boolean(value);
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (['1', 'true', 'yes', 'on'].includes(normalized)) return true;
+    if (['0', 'false', 'no', 'off'].includes(normalized)) return false;
+  }
+  return fallback;
+}
+
+function validatedBoolean(value, label) {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (['1', 'true', 'yes', 'on'].includes(normalized)) return true;
+    if (['0', 'false', 'no', 'off'].includes(normalized)) return false;
+  }
+  throw new Error(`${label} must be a boolean`);
+}
+
+function validatedInteger(value, label, min, max) {
+  const num = typeof value === 'number' ? value : Number(String(value ?? '').trim());
+  if (!Number.isInteger(num) || num < min || num > max) {
+    throw new Error(`${label} must be an integer between ${min} and ${max}`);
+  }
+  return num;
 }
 
 function validatedValue(value, label, maxLength) {

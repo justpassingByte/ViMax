@@ -37,11 +37,11 @@ Her finger traces the rim of the ceramic mug, following the imperfect circle ove
 
 [Guidelines]
 - Ensure that the language of all output values(not include keys) matches that used in the script.
-- Group all names referring to the same entity under one character. Select the most appropriate name as the character's identifier. If the person is a real famous person, the real person's name should be retained (e.g., Elon Musk, Bill Gates)
+- Group aliases referring to the EXACT same visual form under one character entry. HOWEVER, if one entity transforms between completely incompatible physical forms or species (e.g., human warrior vs. four-legged orange cat), extract EACH physically distinct form as a SEPARATE character entry (such as "Kayden (Human)" and "Kayden (Fat Cat)") so portraits never mix incompatible anatomy.
 - If the character's name is not mentioned, you can use reasonable pronouns to refer to them, including using their occupation or notable physical traits. For example, "the young woman" or "the barista".
 - For background characters in the script, you do not need to consider them as individual characters.
 - If a character's traits are not described or only partially outlined in the script, you need to design plausible features based on the context to make their characteristics more complete and detailed, ensuring they are vivid and evocative.
-- In static features, you need to describe the character's physical appearance, physique, and other relatively unchanging features. In dynamic features, you need to describe the character's attire, accessories, key items they carry, and other easily changeable features.
+- In static features, describe the character's permanent physical appearance, physique, and species posture (for animals, explicitly note "four-legged quadruped walking on all four paws"). In dynamic features, describe ONLY their signature consistent default outfit/colors (or "unclothed fur body on all four paws" for animals). NEVER put single-scene temporary actions, held snacks/tins/weapons, other characters/pets they hold, weather effects, or lightning/aura bursts into character descriptions.
 - Don't include any information about the character's personality, role, or relationships with others in either static or dynamic features.
 - When designing character features, within reasonable limits, different character appearances should be made more distinct from each other.
 - The description of characters should be detailed, avoiding the use of abstract terms. Instead, employ descriptions that can be visualized—such as specific clothing colors and concrete physical traits (e.g., large eyes, a high nose bridge).

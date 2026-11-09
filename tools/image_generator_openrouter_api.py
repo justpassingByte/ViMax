@@ -6,6 +6,7 @@ import json
 import os
 from io import BytesIO
 from typing import Any, List
+from urllib.parse import urljoin, urlparse
 
 import aiohttp
 from PIL import Image
@@ -54,6 +55,7 @@ class ImageGeneratorOpenRouterAPI:
         rate_limiter: RateLimiter | None = None,
         http_referer: str = "",
         app_title: str = "ViMax",
+        concurrency_gate: Any = None,
     ) -> None:
         self.api_key = api_key
         self.model = model
@@ -64,6 +66,7 @@ class ImageGeneratorOpenRouterAPI:
         self.rate_limiter = rate_limiter
         self.http_referer = http_referer
         self.app_title = app_title
+        self.concurrency_gate = concurrency_gate
 
     @retry(
         stop=stop_after_attempt(3),
@@ -103,10 +106,15 @@ class ImageGeneratorOpenRouterAPI:
         if compression is not None:
             payload["output_compression"] = compression
         if references:
+            ref_urls = [image_path_to_b64(path, mime=True) for path in references]
             payload["input_references"] = [
-                {"type": "image_url", "image_url": {"url": image_path_to_b64(path, mime=True)}}
-                for path in references
+                {"type": "image_url", "image_url": {"url": ref_url}}
+                for ref_url in ref_urls
             ]
+            if "openrouter.ai" not in self.base_url.lower():
+                payload["images"] = ref_urls
+        if aspect_ratio and "openrouter.ai" not in self.base_url.lower():
+            payload["aspect_ratio"] = aspect_ratio
 
         progress = kwargs.get("progress")
         _emit_progress(
@@ -116,16 +124,35 @@ class ImageGeneratorOpenRouterAPI:
             {"model": self.model, "reference_count": len(references)},
         )
         timeout = aiohttp.ClientTimeout(total=_request_timeout_seconds())
-        status, response = await _post_json(
-            f"{self.base_url}/images",
-            headers=self._headers(),
-            payload=payload,
-            timeout=timeout,
+        image_endpoint = (
+            f"{self.base_url}/images/generations"
+            if "zerakeyai.com" in self.base_url.lower() or "openrouter.ai" not in self.base_url.lower()
+            else f"{self.base_url}/images"
         )
+        if self.concurrency_gate is not None:
+            async with self.concurrency_gate:
+                status, response = await _post_json(
+                    image_endpoint,
+                    headers=self._headers(),
+                    payload=payload,
+                    timeout=timeout,
+                )
+        else:
+            status, response = await _post_json(
+                image_endpoint,
+                headers=self._headers(),
+                payload=payload,
+                timeout=timeout,
+            )
         if status >= 400:
             raise OpenRouterImageAPIError(status, response)
 
-        image, extension = _decode_image_response(response)
+        image, extension = await _extract_image_from_response(
+            response,
+            base_url=self.base_url,
+            auth_headers=self._headers(),
+            timeout=timeout,
+        )
         if enforce_landscape:
             ensure_not_portrait(image)
         _emit_progress(
@@ -153,24 +180,93 @@ def _prompt_with_landscape_requirement(prompt: str, aspect_ratio: str | None) ->
     return f"{prompt}\n\nComposition requirement: create a landscape image with an approximate {ratio} aspect ratio; the width must be greater than the height."
 
 
-def _decode_image_response(payload: Any) -> tuple[Image.Image, str]:
-    data = payload.get("data") if isinstance(payload, dict) else None
-    item = data[0] if isinstance(data, list) and data and isinstance(data[0], dict) else None
-    encoded = item.get("b64_json") if item else None
-    if not isinstance(encoded, str) or not encoded:
-        raise ValueError(f"OpenRouter image response missing data[0].b64_json: {payload}")
-    if encoded.startswith("data:"):
-        encoded = encoded.split(",", 1)[-1]
+def _decode_image_bytes(raw: bytes, *, extension: str = "png") -> tuple[Image.Image, str]:
     try:
-        raw = base64.b64decode(encoded, validate=True)
         with Image.open(BytesIO(raw)) as opened:
             opened.load()
             image = opened.copy()
     except Exception as exc:
-        raise ValueError("OpenRouter image response contained invalid image data") from exc
-    media_type = item.get("media_type", "image/png")
-    extension = {"image/jpeg": "jpg", "image/webp": "webp"}.get(media_type, "png")
+        raise ValueError("Image response contained invalid image data") from exc
     return image, extension
+
+
+def _resolve_image_url(url: str, base_url: str) -> str:
+    if url.startswith("/") and base_url:
+        return urljoin(f"{base_url.rstrip('/')}/", url)
+    return url
+
+
+def _decode_image_response(payload: Any, *, base_url: str = "") -> tuple[Image.Image, str]:
+    data = payload.get("data") if isinstance(payload, dict) else None
+    item = data[0] if isinstance(data, list) and data and isinstance(data[0], dict) else None
+    if not item:
+        raise ValueError(f"Image response missing data[0]: {payload}")
+    encoded = item.get("b64_json")
+    if isinstance(encoded, str) and encoded:
+        if encoded.startswith("data:"):
+            encoded = encoded.split(",", 1)[-1]
+        try:
+            raw = base64.b64decode(encoded, validate=True)
+        except Exception as exc:
+            raise ValueError("Image response contained invalid image data") from exc
+        media_type = item.get("media_type", "image/png")
+        extension = {"image/jpeg": "jpg", "image/webp": "webp"}.get(media_type, "png")
+        return _decode_image_bytes(raw, extension=extension)
+    url = item.get("url")
+    if isinstance(url, str) and url:
+        resolved = _resolve_image_url(url, base_url)
+        import urllib.request
+        req = urllib.request.Request(resolved, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            raw = resp.read()
+        ext = "jpg" if resolved.lower().endswith((".jpg", ".jpeg")) else "png"
+        return _decode_image_bytes(raw, extension=ext)
+    raise ValueError(f"Image response missing both b64_json and url: {payload}")
+
+
+async def _extract_image_from_response(
+    payload: Any,
+    *,
+    base_url: str = "",
+    auth_headers: dict[str, str] | None = None,
+    timeout: aiohttp.ClientTimeout | None = None,
+) -> tuple[Image.Image, str]:
+    data = payload.get("data") if isinstance(payload, dict) else None
+    item = data[0] if isinstance(data, list) and data and isinstance(data[0], dict) else None
+    if not item:
+        raise ValueError(f"Image response missing data[0]: {payload}")
+    encoded = item.get("b64_json")
+    if isinstance(encoded, str) and encoded:
+        return _decode_image_response(payload, base_url=base_url)
+    url = item.get("url")
+    if isinstance(url, str) and url:
+        resolved = _resolve_image_url(url, base_url)
+        req_headers = {"User-Agent": "Mozilla/5.0"}
+        if auth_headers and base_url:
+            if urlparse(resolved).netloc == urlparse(base_url).netloc and "Authorization" in auth_headers:
+                req_headers["Authorization"] = auth_headers["Authorization"]
+        status, raw = await _download_image_bytes(
+            resolved,
+            headers=req_headers,
+            timeout=timeout or aiohttp.ClientTimeout(total=_request_timeout_seconds()),
+        )
+        if status >= 400:
+            raise OpenRouterImageAPIError(status, {"message": f"Image download failed from {resolved}", "bytes": len(raw)})
+        lower_path = urlparse(resolved).path.lower()
+        ext = "jpg" if lower_path.endswith((".jpg", ".jpeg")) else "webp" if lower_path.endswith(".webp") else "png"
+        return _decode_image_bytes(raw, extension=ext)
+    raise ValueError(f"Image response missing both b64_json and url: {payload}")
+
+
+async def _download_image_bytes(
+    url: str,
+    *,
+    headers: dict[str, str],
+    timeout: aiohttp.ClientTimeout,
+) -> tuple[int, bytes]:
+    async with aiohttp.ClientSession(timeout=timeout) as session:
+        async with session.get(url, headers=headers) as response:
+            return response.status, await response.read()
 
 
 def _emit_progress(progress: Any, stage: str, message: str, metadata: dict[str, Any]) -> None:

@@ -129,6 +129,14 @@ def api_provider_from_base_url(base_url: str) -> str:
     return ""
 
 
+def image_provider(workspace_root: str | Path = ".") -> str:
+    """Infer the image API relay/provider from image.base_url or image.model_provider."""
+    explicit = config_value("image", "model_provider", ["VIMAX_IMAGE_PROVIDER", "VIMAX_IMAGE_MODEL_PROVIDER"], "", workspace_root).strip().lower()
+    if explicit:
+        return explicit
+    return api_provider_from_base_url(image_base_url(workspace_root))
+
+
 def video_provider(workspace_root: str | Path = ".") -> str:
     """Infer the video API relay/provider from video.base_url or video.model_provider."""
     explicit = config_value("video", "model_provider", ["VIMAX_VIDEO_PROVIDER", "VIMAX_VIDEO_MODEL_PROVIDER"], "", workspace_root).strip().lower()
@@ -173,3 +181,67 @@ def audio_character_voices(workspace_root: str | Path = ".") -> dict[str, str]:
         if isinstance(cv, dict):
             return {str(k).strip(): str(v).strip() for k, v in cv.items()}
     return {}
+
+DEFAULT_SUBTITLES_ENABLED = False
+DEFAULT_SUBTITLES_LANGUAGE = "vi"
+DEFAULT_SUBTITLES_BURN_IN = True
+DEFAULT_SUBTITLES_FONT = "Arial"
+DEFAULT_SUBTITLES_FONT_SIZE = 34
+
+
+def _parse_bool(value: Any, default: bool) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"1", "true", "yes", "on"}:
+            return True
+        if normalized in {"0", "false", "no", "off"}:
+            return False
+    return default
+
+
+def subtitles_enabled(workspace_root: str | Path = ".") -> bool:
+    raw = os.environ.get("VIMAX_SUBTITLES_ENABLED")
+    if raw is not None and raw.strip() != "":
+        return _parse_bool(raw, DEFAULT_SUBTITLES_ENABLED)
+    section = load_agent_config(workspace_root).get("subtitles", {})
+    if isinstance(section, dict) and "enabled" in section:
+        return _parse_bool(section.get("enabled"), DEFAULT_SUBTITLES_ENABLED)
+    return DEFAULT_SUBTITLES_ENABLED
+
+
+def subtitles_language(workspace_root: str | Path = ".") -> str:
+    return config_value("subtitles", "language", ["VIMAX_SUBTITLES_LANGUAGE"], DEFAULT_SUBTITLES_LANGUAGE, workspace_root)
+
+
+def subtitles_burn_in(workspace_root: str | Path = ".") -> bool:
+    raw = os.environ.get("VIMAX_SUBTITLES_BURN_IN")
+    if raw is not None and raw.strip() != "":
+        return _parse_bool(raw, DEFAULT_SUBTITLES_BURN_IN)
+    section = load_agent_config(workspace_root).get("subtitles", {})
+    if isinstance(section, dict) and "burn_in" in section:
+        return _parse_bool(section.get("burn_in"), DEFAULT_SUBTITLES_BURN_IN)
+    return DEFAULT_SUBTITLES_BURN_IN
+
+
+def subtitles_font(workspace_root: str | Path = ".") -> str:
+    return config_value("subtitles", "font", ["VIMAX_SUBTITLES_FONT"], DEFAULT_SUBTITLES_FONT, workspace_root)
+
+
+def subtitles_font_size(workspace_root: str | Path = ".") -> int:
+    raw = os.environ.get("VIMAX_SUBTITLES_FONT_SIZE")
+    if raw is not None and raw.strip():
+        try:
+            return max(12, int(raw))
+        except ValueError:
+            return DEFAULT_SUBTITLES_FONT_SIZE
+    section = load_agent_config(workspace_root).get("subtitles", {})
+    if isinstance(section, dict) and section.get("font_size") is not None:
+        try:
+            return max(12, int(section.get("font_size")))
+        except (TypeError, ValueError):
+            return DEFAULT_SUBTITLES_FONT_SIZE
+    return DEFAULT_SUBTITLES_FONT_SIZE

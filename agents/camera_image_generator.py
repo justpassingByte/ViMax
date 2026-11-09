@@ -1,4 +1,6 @@
 import os
+import re
+import inspect
 import logging
 import cv2
 from typing import List, Tuple, Union, Optional
@@ -187,17 +189,33 @@ class CameraImageGenerator:
         second_shot_visual_desc: str,
         first_shot_ff_path: str,
         progress=None,
+        suppress_on_screen_subtitles: bool = False,
     ) -> VideoOutput:
+        def _clean_transition_text(text: str) -> str:
+            cleaned = re.sub(r"\s*[^.。\n]*?\b(?:nói|says?)\s*:\s*\"[^\"]*\"[!?.…]*", "", text or "", flags=re.IGNORECASE)
+            cleaned = re.sub(r"[<>]", "", cleaned)
+            return re.sub(r"\s{2,}", " ", cleaned).strip()
+
+        desc_first = _clean_transition_text(first_shot_visual_desc) if suppress_on_screen_subtitles else first_shot_visual_desc
+        desc_second = _clean_transition_text(second_shot_visual_desc) if suppress_on_screen_subtitles else second_shot_visual_desc
 
         prompt = f"Two shots. The transition between the shots is a cut to. The style of the two shots should be consistent."
-        prompt += f"\nThe first shot description: {first_shot_visual_desc}."
-        prompt += f"\nThe second shot description: {second_shot_visual_desc}."
+        prompt += f"\nThe first shot description: {desc_first}."
+        prompt += f"\nThe second shot description: {desc_second}."
         reference_image_paths = [first_shot_ff_path]
-        video_output = await self.video_generator.generate_single_video(
-            prompt=prompt,
-            reference_image_paths=reference_image_paths,
-            progress=progress,
-        )
+        gen_kwargs = {
+            "prompt": prompt,
+            "reference_image_paths": reference_image_paths,
+            "progress": progress,
+        }
+        try:
+            sig = inspect.signature(self.video_generator.generate_single_video)
+            params = sig.parameters
+            if "suppress_on_screen_subtitles" in params or any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values()):
+                gen_kwargs["suppress_on_screen_subtitles"] = suppress_on_screen_subtitles
+        except (TypeError, ValueError):
+            pass
+        video_output = await self.video_generator.generate_single_video(**gen_kwargs)
         return video_output
 
 
@@ -212,6 +230,13 @@ class CameraImageGenerator:
         scene_list = scene_manager.get_scene_list()
         output_dir = os.path.join(os.path.dirname(transition_video_path), "cache")
         os.makedirs(output_dir, exist_ok=True)
+        try:
+            import scenedetect.video_splitter as _video_splitter
+            if getattr(_video_splitter, "FFMPEG_PATH", None) is None:
+                import imageio_ffmpeg
+                _video_splitter.FFMPEG_PATH = imageio_ffmpeg.get_ffmpeg_exe()
+        except Exception:
+            pass
         split_video_ffmpeg(transition_video_path, scene_list, output_dir, show_progress=True)
 
 
@@ -220,16 +245,27 @@ class CameraImageGenerator:
         if os.path.exists(second_video_path):
             # use first frame of second shot as new camera image
             clip = VideoFileClip(second_video_path)
-            ff = clip.get_frame(0)
-            ff = Image.fromarray(ff.astype('uint8'), 'RGB')
+            try:
+                ff = clip.get_frame(0)
+                ff = Image.fromarray(ff.astype('uint8'), 'RGB')
+            finally:
+                clip.close()
             return ImageOutput(fmt="pil", ext="png", data=ff)
         else:
-            # use last frame of transition video to instead
             clip = VideoFileClip(transition_video_path)
-            lf_time = clip.duration - (1 / clip.fps)
-            lf_time = max(0, lf_time)
-            lf = clip.get_frame(lf_time)
-            lf = Image.fromarray(lf.astype('uint8'), 'RGB')
+            try:
+                fps = clip.fps or 24
+                max_t = max(0.0, clip.duration - (1.0 / fps))
+                if len(scene_list) >= 2:
+                    t = min(max(0.0, scene_list[1][0].get_seconds()), max_t)
+                    frame = clip.get_frame(t)
+                    img = Image.fromarray(frame.astype('uint8'), 'RGB')
+                    return ImageOutput(fmt="pil", ext="png", data=img)
+                # use last frame of transition video to instead
+                lf = clip.get_frame(max_t)
+                lf = Image.fromarray(lf.astype('uint8'), 'RGB')
+            finally:
+                clip.close()
             return ImageOutput(fmt="pil", ext="png", data=lf)
 
 

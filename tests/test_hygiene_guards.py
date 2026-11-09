@@ -13,7 +13,7 @@ from unittest.mock import MagicMock, patch
 import yaml
 
 from utils.rate_limiter import RateLimiter
-from utils.video import concatenate_video_files
+from utils.video import concatenate_video_files, normalize_clips_for_concat
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -67,6 +67,31 @@ class TestVideoConcatenationCleanup(unittest.TestCase):
         final.close.assert_called_once()
         for clip in clips:
             clip.close.assert_called_once()
+
+    def test_normalize_clips_scales_mixed_resolutions_and_concat_uses_compose(self):
+        small_clip = MagicMock()
+        small_clip.size = (1248, 704)
+        scaled_clip = MagicMock()
+        scaled_clip.size = (1280, 720)
+        small_clip.resized.return_value = scaled_clip
+
+        hd_clip = MagicMock()
+        hd_clip.size = (1280, 720)
+
+        normalized, extra = normalize_clips_for_concat([small_clip, hd_clip])
+        small_clip.resized.assert_called_once_with((1280, 720))
+        self.assertEqual(normalized, [scaled_clip, hd_clip])
+        self.assertEqual(extra, [scaled_clip])
+
+        final = MagicMock()
+        with patch("utils.video.VideoFileClip", side_effect=[small_clip, hd_clip]),              patch("utils.video.concatenate_videoclips", return_value=final) as mock_concat:
+            concatenate_video_files(["a.mp4", "b.mp4"], "out.mp4")
+
+        mock_concat.assert_called_once_with([scaled_clip, hd_clip], method="compose")
+        final.close.assert_called_once()
+        scaled_clip.close.assert_called_once()
+        small_clip.close.assert_called_once()
+        hd_clip.close.assert_called_once()
 
 
 class TestPackagingMetadata(unittest.TestCase):
