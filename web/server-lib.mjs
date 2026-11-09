@@ -3,7 +3,31 @@ import path from 'node:path';
 
 const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif']);
 const VIDEO_EXTENSIONS = new Set(['.mp4', '.webm', '.mov']);
-const TEXT_EXTENSIONS = new Set(['.txt', '.md', '.json']);
+const TEXT_EXTENSIONS = new Set(['.txt', '.md', '.json', '.srt', '.ass']);
+const MAX_ARTIFACTS_RETURNED = 500;
+const MAX_SCANNED_ENTRIES = 8000;
+const SKIPPED_DIRECTORIES = new Set(['node_modules', '__pycache__', '.git']);
+
+const PRIORITY_DOC_NAMES = new Set([
+  'series_manifest.json',
+  'series_state.json',
+  'series_characters.json',
+  'series_character_seed_refs.json',
+  'episode_plan.json',
+  'comic_manifest.json',
+  'characters.json',
+  'character_portraits_registry.json',
+  'character_seed_refs.json',
+  'script.json',
+  'storyboard.json',
+  'camera_tree.json',
+  'shot_description.json',
+  'shot_panel_refs.json',
+  'beat_map.json',
+  'timeline_manifest.json',
+  'story.txt',
+  'script.txt',
+]);
 
 export async function readSessionState(repoRoot) {
   const fallback = {activeSessionId: '', sessions: []};
@@ -153,11 +177,42 @@ function displayUserInput(value) {
     .trim();
 }
 
+function artifactPriorityTier(relativePath, name, kind) {
+  const lowerPath = `/${relativePath.toLowerCase()}`;
+  const lowerName = name.toLowerCase();
+  if (
+    lowerPath.includes('/sources/')
+    || lowerPath.includes('/panel_anchors/')
+    || lowerPath.includes('/character_seeds/')
+    || lowerPath.includes('/chunks/')
+    || lowerPath.includes('/_raw/')
+  ) {
+    return 3;
+  }
+  if (kind === 'video' && lowerName.startsWith('final_video')) return 0;
+  if ((lowerName.endsWith('.srt') || lowerName.endsWith('.ass')) && lowerName.startsWith('final_video')) return 0;
+  if (PRIORITY_DOC_NAMES.has(lowerName)) return 0;
+  if (lowerPath.startsWith('/uploads/')) return 0;
+  if (lowerPath.includes('/character_portraits/')) return 1;
+  if (
+    lowerName === 'first_frame.png'
+    || lowerName === 'last_frame.png'
+    || lowerName === 'video.mp4'
+    || lowerName.startsWith('transition_video_')
+    || lowerName.startsWith('new_camera_')
+  ) {
+    return 1;
+  }
+  return 2;
+}
+
 export async function listSessionArtifacts(repoRoot, sessionId) {
   const sessionRoot = resolveSessionRoot(repoRoot, sessionId);
-  const artifacts = [];
+  const candidates = [];
+  let scannedEntries = 0;
 
   async function walk(directory) {
+    if (scannedEntries >= MAX_SCANNED_ENTRIES) return;
     let entries;
     try {
       entries = await readdir(directory, {withFileTypes: true});
@@ -165,7 +220,9 @@ export async function listSessionArtifacts(repoRoot, sessionId) {
       return;
     }
     for (const entry of entries) {
-      if (artifacts.length >= 400 || entry.name.startsWith('.')) continue;
+      if (scannedEntries >= MAX_SCANNED_ENTRIES) break;
+      if (entry.name.startsWith('.') || SKIPPED_DIRECTORIES.has(entry.name)) continue;
+      scannedEntries += 1;
       const absolute = path.join(directory, entry.name);
       if (entry.isDirectory()) {
         await walk(absolute);
@@ -181,21 +238,42 @@ export async function listSessionArtifacts(repoRoot, sessionId) {
             ? 'document'
             : null;
       if (!kind) continue;
-      const info = await stat(absolute);
       const relativePath = path.relative(sessionRoot, absolute).split(path.sep).join('/');
-      artifacts.push({
-        path: relativePath,
+      candidates.push({
+        absolute,
+        relativePath,
         name: entry.name,
         kind,
-        size: info.size,
-        updatedAt: info.mtime.toISOString(),
-        url: `/api/artifact?session=${encodeURIComponent(sessionId)}&path=${encodeURIComponent(relativePath)}`,
+        tier: artifactPriorityTier(relativePath, entry.name, kind),
       });
     }
   }
 
   await walk(sessionRoot);
-  return artifacts.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+  candidates.sort((left, right) => left.tier - right.tier || left.relativePath.localeCompare(right.relativePath));
+  const selected = candidates.slice(0, MAX_ARTIFACTS_RETURNED);
+
+  const artifacts = await Promise.all(
+    selected.map(async (item) => {
+      try {
+        const info = await stat(item.absolute);
+        return {
+          path: item.relativePath,
+          name: item.name,
+          kind: item.kind,
+          size: info.size,
+          updatedAt: info.mtime.toISOString(),
+          url: `/api/artifact?session=${encodeURIComponent(sessionId)}&path=${encodeURIComponent(item.relativePath)}`,
+        };
+      } catch {
+        return null;
+      }
+    }),
+  );
+
+  return artifacts
+    .filter(Boolean)
+    .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
 }
 
 export function resolveArtifactPath(repoRoot, sessionId, relativePath) {
@@ -227,6 +305,8 @@ export function artifactContentType(filePath) {
     '.json': 'application/json; charset=utf-8',
     '.txt': 'text/plain; charset=utf-8',
     '.md': 'text/markdown; charset=utf-8',
+    '.srt': 'text/plain; charset=utf-8',
+    '.ass': 'text/plain; charset=utf-8',
   }[extension] ?? 'application/octet-stream';
 }
 

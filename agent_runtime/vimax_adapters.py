@@ -14,6 +14,7 @@ import inspect
 import json
 import logging
 import os
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -29,7 +30,9 @@ from agents.novel_compressor import NovelCompressor
 from agents.scene_extractor import SceneExtractor
 from pipelines.novel2movie_pipeline import Novel2MoviePipeline
 from pipelines.idea2video_pipeline import Idea2VideoPipeline
+from pipelines.manga2video_pipeline import Manga2VideoPipeline
 from pipelines.script2video_pipeline import Script2VideoPipeline
+from tools.manga_source import ARCHIVE_EXTENSIONS, IMAGE_EXTENSIONS, _is_http_url
 from tools.image_generator_nanobanana_yunwu_api import ImageGeneratorNanobananaYunwuAPI
 from tools.image_generator_doubao_seedream_yunwu_api import ImageGeneratorDoubaoSeedreamYunwuAPI
 from tools.image_generator_openrouter_api import ImageGeneratorOpenRouterAPI
@@ -97,6 +100,7 @@ def build_vimax_adapter_specs(workspace_root: str | Path, session_index: Any) ->
             name="vimax_render_video",
             description=(
                 "Render keyframes, video clips, and final video for the active ViMax session. "
+                "Supports optional `force=True`, `scene_idx`, and `shot_idxs=[...]` for selective shot cache invalidation and partial re-rendering before recomposing the final video. "
                 "This checks that structured text artifacts exist before rendering and reports missing dependencies instead of pretending render started."
             ),
             handler=adapter.vimax_render_video,
@@ -104,6 +108,34 @@ def build_vimax_adapter_specs(workspace_root: str | Path, session_index: Any) ->
                 "session_id": ToolArgumentSchema(str, required=False, default=""),
                 "mode": ToolArgumentSchema(str, required=False, default="foreground"),
                 "force": ToolArgumentSchema(bool, required=False, default=False),
+                "shot_idxs": ToolArgumentSchema(list, required=False, default=None),
+                "scene_idx": ToolArgumentSchema(int, required=False, default=None),
+                "episode_idx": ToolArgumentSchema(int, required=False, default=None),
+            },
+        ),
+        ToolSpec(
+            name="vimax_manga2video",
+            description=(
+                "Adapt manga, manhwa, or webtoon chapters (folder of chapter images/subfolders, .cbz/.zip, .pdf, or LINE Webtoon URLs) "
+                "into a canon-faithful anime episode or full multi-episode series under manga2video/. "
+                "Combines 1..N chapters into one episode via chapter_range, or set chapters_per_episode >= 1 to adapt an entire multi-chapter "
+                "series into numbered episodes under manga2video/episodes/ep_*/ while sharing canonical character turnarounds across episodes. "
+                "Matches uploaded character references from <session>/uploads/ or character_refs, builds panel-anchored storyboards, "
+                "and by default automatically renders turnarounds, keyframes, native Japanese voice/SFX clips, and Vietsub final_video.mp4."
+            ),
+            handler=adapter.vimax_manga2video,
+            schema={
+                "session_id": ToolArgumentSchema(str, required=False, default=""),
+                "sources": ToolArgumentSchema((str, list), required=False, default=""),
+                "chapter_range": ToolArgumentSchema((str, int, list), required=False, default=""),
+                "chapters_per_episode": ToolArgumentSchema(int, required=False, default=0),
+                "episode_range": ToolArgumentSchema((str, int, list), required=False, default=""),
+                "character_refs": ToolArgumentSchema(dict, required=False, default={}),
+                "style": ToolArgumentSchema(str, required=False, default=""),
+                "user_requirement": ToolArgumentSchema(str, required=False, default=""),
+                "auto_render": ToolArgumentSchema(bool, required=False, default=True),
+                "stop_after": ToolArgumentSchema(str, required=False, default="full"),
+                "episode_title": ToolArgumentSchema(str, required=False, default=""),
             },
         ),
     ]
@@ -363,6 +395,53 @@ class ViMaxAdapters:
             _write_render_status(working_dir, status="dependency_missing", payload=payload)
             return ToolResult("vimax_render_video", False, f"Dependency missing: {', '.join(missing)}", payload)
 
+        force = bool(args.get("force", False))
+        raw_shot_idxs = args.get("shot_idxs")
+        shot_idxs: list[int] | None = None
+        if raw_shot_idxs is not None:
+            if not isinstance(raw_shot_idxs, list):
+                return ToolResult("vimax_render_video", False, "shot_idxs must be a list of non-negative integers.", {"error_type": "invalid_argument", "session_id": session_id})
+            try:
+                shot_idxs = sorted({int(x) for x in raw_shot_idxs})
+            except (TypeError, ValueError):
+                return ToolResult("vimax_render_video", False, "shot_idxs must contain only integers.", {"error_type": "invalid_argument", "session_id": session_id})
+            if any(idx < 0 for idx in shot_idxs):
+                return ToolResult("vimax_render_video", False, "shot_idxs cannot contain negative indices.", {"error_type": "invalid_argument", "session_id": session_id})
+
+        raw_scene_idx = args.get("scene_idx")
+        scene_idx: int | None = None
+        if raw_scene_idx is not None:
+            if isinstance(raw_scene_idx, bool):
+                return ToolResult("vimax_render_video", False, "scene_idx must be a non-negative integer.", {"error_type": "invalid_argument", "session_id": session_id})
+            try:
+                scene_idx = int(raw_scene_idx)
+            except (TypeError, ValueError):
+                return ToolResult("vimax_render_video", False, "scene_idx must be a non-negative integer.", {"error_type": "invalid_argument", "session_id": session_id})
+            if scene_idx < 0:
+                return ToolResult("vimax_render_video", False, "scene_idx cannot be negative.", {"error_type": "invalid_argument", "session_id": session_id})
+
+        raw_episode_idx = args.get("episode_idx")
+        episode_idx: int | None = None
+        if raw_episode_idx is not None:
+            if isinstance(raw_episode_idx, bool):
+                return ToolResult("vimax_render_video", False, "episode_idx must be a positive integer.", {"error_type": "invalid_argument", "session_id": session_id})
+            try:
+                episode_idx = int(raw_episode_idx)
+            except (TypeError, ValueError):
+                return ToolResult("vimax_render_video", False, "episode_idx must be a positive integer.", {"error_type": "invalid_argument", "session_id": session_id})
+            if episode_idx < 1:
+                return ToolResult("vimax_render_video", False, "episode_idx must be >= 1.", {"error_type": "invalid_argument", "session_id": session_id})
+
+        if force or shot_idxs:
+            invalidate_render_artifacts(
+                working_dir,
+                shot_idxs=shot_idxs,
+                scene_idx=scene_idx,
+                episode_idx=episode_idx,
+                force=force,
+                stale_flags=session.get("stale") if isinstance(session, dict) else None,
+            )
+
         self.session_index.update_stage(session_id, "rendering", "Rendering video artifacts")
         _write_render_status(working_dir, status="rendering", payload={"session_id": session_id, "render_started": True, "render_completed": False})
         try:
@@ -376,6 +455,7 @@ class ViMaxAdapters:
                 idea_pipeline = Idea2VideoPipeline(chat_model=chat_model, image_generator=image_generator, video_generator=video_generator, working_dir=str(working_dir / "idea2video"), num_image_candidates=num_image_candidates)
                 with _suppress_pipeline_output():
                     final_video = await idea_pipeline(idea=str(session.get("idea", "")), user_requirement=str(session.get("user_requirement", "")), style=str(session.get("style", "")), quiet=True, progress=_pipeline_progress(runtime, session_id))
+                self.session_index.clear_stale(session_id)
                 self.session_index.update_stage(session_id, "rendered", "Final video rendered")
                 payload = {"session_id": session_id, "render_mode": "idea2video", "render_started": True, "render_completed": True, "final_video_path": _safe_relative(final_video, self.workspace_root), "missing": []}
                 _write_render_status(working_dir, status="rendered", payload=payload)
@@ -387,6 +467,7 @@ class ViMaxAdapters:
                 pipeline = Script2VideoPipeline(chat_model=chat_model, image_generator=image_generator, video_generator=video_generator, working_dir=str(script_dir), num_image_candidates=num_image_candidates)
                 with _suppress_pipeline_output():
                     final_video = await pipeline(script=script_text, user_requirement=str(session.get("user_requirement", "")), style=str(session.get("style", "")), characters=characters, quiet=True, progress=_pipeline_progress(runtime, session_id))
+                self.session_index.clear_stale(session_id)
                 self.session_index.update_stage(session_id, "rendered", "Final video rendered")
                 payload = {"session_id": session_id, "render_mode": "script2video", "render_started": True, "render_completed": True, "final_video_path": _safe_relative(final_video, self.workspace_root), "missing": []}
                 _write_render_status(working_dir, status="rendered", payload=payload)
@@ -397,6 +478,7 @@ class ViMaxAdapters:
                 with _suppress_pipeline_output():
                     render_result = await pipeline.render_video_artifacts(style=str(session.get("style", "")), user_requirement=str(session.get("user_requirement", "")), quiet=True, progress=_pipeline_progress(runtime, session_id))
                 scene_videos_dir = Path(render_result["scene_videos_dir"])
+                self.session_index.clear_stale(session_id)
                 self.session_index.update_stage(session_id, "novel_scene_rendered", "Novel scene videos rendered")
                 payload = {
                     "session_id": session_id,
@@ -408,6 +490,64 @@ class ViMaxAdapters:
                     "scene_videos_dir": _safe_relative(scene_videos_dir, self.workspace_root),
                     "scene_video_dirs": [_safe_relative(path, self.workspace_root) for path in render_result.get("scene_video_dirs", [])],
                     "scene_count": render_result.get("scene_count", 0),
+                    "missing": [],
+                }
+                _write_render_status(working_dir, status="rendered", payload=payload)
+                return ToolResult("vimax_render_video", True, json.dumps(payload, ensure_ascii=False, indent=2), payload)
+            if _manga_mode_ready(checklist):
+                manga_dir = working_dir / "manga2video"
+                manga_pipeline = Manga2VideoPipeline(
+                    chat_model=chat_model,
+                    image_generator=image_generator,
+                    video_generator=video_generator,
+                    working_dir=str(manga_dir),
+                    num_image_candidates=num_image_candidates,
+                )
+                if _manga_series_mode_ready(checklist) and (manga_dir / "series_manifest.json").is_file():
+                    with _suppress_pipeline_output():
+                        series_plan = await manga_pipeline.render_series(
+                            style=str(session.get("style", "")),
+                            user_requirement=str(session.get("user_requirement", "")),
+                            episode_range=episode_idx,
+                            resume=not force,
+                            quiet=True,
+                            progress=_pipeline_progress(runtime, session_id),
+                        )
+                    final_paths = [
+                        _safe_relative(entry.final_video_path, self.workspace_root)
+                        for entry in series_plan.episodes
+                        if entry.final_video_path
+                    ]
+                    self.session_index.clear_stale(session_id)
+                    self.session_index.update_stage(session_id, "rendered", "Manga series episodes rendered")
+                    payload = {
+                        "session_id": session_id,
+                        "render_mode": "manga2video_series",
+                        "render_started": True,
+                        "render_completed": True,
+                        "episode_count": len(series_plan.episodes),
+                        "completed_episodes": series_plan.completed_episodes,
+                        "final_video_paths": final_paths,
+                        "final_video_path": final_paths[0] if final_paths else None,
+                        "missing": [],
+                    }
+                    _write_render_status(working_dir, status="rendered", payload=payload)
+                    return ToolResult("vimax_render_video", True, json.dumps(payload, ensure_ascii=False, indent=2), payload)
+                with _suppress_pipeline_output():
+                    final_video = await manga_pipeline.render_episode(
+                        style=str(session.get("style", "")),
+                        user_requirement=str(session.get("user_requirement", "")),
+                        quiet=True,
+                        progress=_pipeline_progress(runtime, session_id),
+                    )
+                self.session_index.clear_stale(session_id)
+                self.session_index.update_stage(session_id, "rendered", "Manga episode final video rendered")
+                payload = {
+                    "session_id": session_id,
+                    "render_mode": "manga2video",
+                    "render_started": True,
+                    "render_completed": True,
+                    "final_video_path": _safe_relative(final_video, self.workspace_root),
                     "missing": [],
                 }
                 _write_render_status(working_dir, status="rendered", payload=payload)
@@ -434,6 +574,399 @@ class ViMaxAdapters:
         payload = {"error_type": "dependency_missing", "session_id": session_id}
         _write_render_status(working_dir, status="dependency_missing", payload=payload)
         return ToolResult("vimax_render_video", False, "No render mode matched current session.", payload)
+
+    async def vimax_manga2video(self, args: dict[str, Any], runtime: ToolRuntimeContext | None = None) -> ToolResult:
+        raw_sources = args.get("sources")
+        chapter_range_arg = args.get("chapter_range")
+        if chapter_range_arg == "":
+            chapter_range_arg = None
+        raw_cpe = args.get("chapters_per_episode", 0)
+        if isinstance(raw_cpe, bool):
+            return ToolResult(
+                "vimax_manga2video",
+                False,
+                "chapters_per_episode must be a non-negative integer.",
+                {"error_type": "invalid_argument"},
+            )
+        try:
+            chapters_per_episode = int(raw_cpe or 0)
+        except (TypeError, ValueError):
+            return ToolResult(
+                "vimax_manga2video",
+                False,
+                f"Invalid chapters_per_episode value: {raw_cpe!r}",
+                {"error_type": "invalid_argument"},
+            )
+        if chapters_per_episode < 0:
+            return ToolResult(
+                "vimax_manga2video",
+                False,
+                "chapters_per_episode cannot be negative.",
+                {"error_type": "invalid_argument"},
+            )
+        episode_range_arg = args.get("episode_range")
+        if episode_range_arg == "":
+            episode_range_arg = None
+        requested_style = str(args.get("style", "") or "").strip()
+        user_requirement = str(args.get("user_requirement", "") or "").strip()
+        episode_title = str(args.get("episode_title", "") or "").strip()
+        auto_render = bool(args.get("auto_render", True))
+        stop_after = str(args.get("stop_after", "full") or "full").strip().lower()
+        if stop_after not in {"portraits", "frames", "full"}:
+            return ToolResult(
+                "vimax_manga2video",
+                False,
+                f"Invalid stop_after value {stop_after!r}; expected portraits, frames, or full.",
+                {"error_type": "invalid_argument"},
+            )
+
+        session_id_arg = str(args.get("session_id", "") or "").strip()
+        raw_src_items = (
+            [str(x).strip() for x in raw_sources if str(x).strip()]
+            if isinstance(raw_sources, (list, tuple))
+            else ([str(raw_sources).strip()] if str(raw_sources or "").strip() else [])
+        )
+        source_marker = (
+            f"manga2video:{'|'.join(raw_src_items)}:{chapter_range_arg or ''}:{chapters_per_episode or ''}"
+            if raw_src_items
+            else ""
+        )
+        style = requested_style or "2D modern Japanese anime film style, crisp cel shading, expressive eyes, atmospheric lighting"
+
+        session = self._resolve_session(
+            session_id_arg,
+            idea=source_marker,
+            script="",
+            user_requirement=user_requirement,
+            style=style,
+        )
+        session_id = session["session_id"]
+        working_dir = self.session_index.working_dir(session_id)
+        manga_dir = working_dir / "manga2video"
+        manga_dir.mkdir(parents=True, exist_ok=True)
+
+        archive_uploads, image_uploads = _discover_session_manga_uploads(working_dir)
+        resolved_sources: list[str] = []
+        for item in raw_src_items:
+            if _is_http_url(item):
+                resolved_sources.append(item)
+                continue
+            cand = Path(item).expanduser()
+            if not cand.is_absolute():
+                if (working_dir / cand).exists():
+                    cand = working_dir / cand
+                elif (self.workspace_root / cand).exists():
+                    cand = self.workspace_root / cand
+            resolved_sources.append(str(cand))
+
+        if not resolved_sources and archive_uploads:
+            resolved_sources = [str(p) for p in archive_uploads]
+
+        has_cached_manifest = (manga_dir / "comic_manifest.json").is_file()
+        if not resolved_sources and not has_cached_manifest:
+            return ToolResult(
+                "vimax_manga2video",
+                False,
+                "Provide `sources` (chapter folder, .cbz/.zip, .pdf, or Webtoon URLs) or upload a .cbz/.zip/.pdf under session uploads/.",
+                {"error_type": "missing_input", "session_id": session_id},
+            )
+
+        is_series_mode = (
+            chapters_per_episode >= 1
+            or episode_range_arg is not None
+            or (not resolved_sources and (manga_dir / "series_manifest.json").is_file())
+        )
+        if is_series_mode and chapters_per_episode <= 0:
+            if (manga_dir / "series_manifest.json").is_file():
+                try:
+                    cached_sm = json.loads((manga_dir / "series_manifest.json").read_text(encoding="utf-8"))
+                    chapters_per_episode = max(1, int(cached_sm.get("chapters_per_episode") or 1))
+                except (OSError, ValueError):
+                    chapters_per_episode = 1
+            else:
+                chapters_per_episode = 1
+
+        raw_char_refs = args.get("character_refs") or {}
+        resolved_char_refs: dict[str, list[str]] = {}
+        if isinstance(raw_char_refs, dict):
+            for k, v in raw_char_refs.items():
+                vals = v if isinstance(v, (list, tuple)) else [v]
+                out_paths: list[str] = []
+                for p in vals:
+                    ps = str(p or "").strip()
+                    if not ps:
+                        continue
+                    cand = Path(ps).expanduser()
+                    if not cand.is_absolute():
+                        if (working_dir / cand).exists():
+                            cand = working_dir / cand
+                        elif (self.workspace_root / cand).exists():
+                            cand = self.workspace_root / cand
+                    out_paths.append(str(cand))
+                if out_paths:
+                    resolved_char_refs[str(k)] = out_paths
+
+        try:
+            chat_model = _build_chat_model()
+            dummy = _UnavailableGenerator()
+            num_image_candidates = image_num_candidates(self.workspace_root)
+            plan_pipeline = Manga2VideoPipeline(
+                chat_model=chat_model,
+                image_generator=dummy,
+                video_generator=dummy,
+                working_dir=manga_dir,
+                num_image_candidates=num_image_candidates,
+            )
+
+            if is_series_mode:
+                self.session_index.update_stage(session_id, "manga_planning", "Ingesting and planning full comic series")
+                if runtime:
+                    runtime.emit_progress("Starting manga2video series planning", stage="starting", metadata={"session_id": session_id, "chapters_per_episode": chapters_per_episode})
+                    await asyncio.sleep(0)
+
+                series_plan = await _run_planning_step(
+                    "Planning multi-episode anime series from comic sources",
+                    "manga_plan_series",
+                    plan_pipeline.plan_series(
+                        sources=resolved_sources or None,
+                        chapter_range=chapter_range_arg,
+                        chapters_per_episode=chapters_per_episode,
+                        episode_range=episode_range_arg,
+                        character_refs=resolved_char_refs or None,
+                        upload_image_paths=image_uploads,
+                        style=style,
+                        user_requirement=user_requirement,
+                        series_title=episode_title,
+                        progress=_pipeline_progress(runtime, session_id),
+                        quiet=True,
+                    ),
+                    runtime,
+                    {"session_id": session_id},
+                )
+                checklist = self.session_index.artifact_checklist(session_id)
+                ready = _manga_mode_ready(checklist)
+                self.session_index.update_stage(
+                    session_id,
+                    "manga_series_planned" if ready else "manga_planning",
+                    f"Manga series planned ({len(series_plan.episodes)} episodes, {series_plan.total_chapters} chapters)",
+                )
+                if not auto_render:
+                    payload = {
+                        "session_id": session_id,
+                        "render_mode": "manga2video_series",
+                        "working_dir": _safe_relative(working_dir, self.workspace_root),
+                        "total_chapters": series_plan.total_chapters,
+                        "chapters_per_episode": series_plan.chapters_per_episode,
+                        "episode_count": len(series_plan.episodes),
+                        "episodes": [
+                            {
+                                "episode_idx": ep.episode_idx,
+                                "chapters": ep.chapters,
+                                "scene_count": ep.scene_count,
+                                "total_beats": ep.total_beats,
+                                "status": ep.status,
+                            }
+                            for ep in series_plan.episodes
+                        ],
+                        "ready_for_render": ready,
+                        "render_started": False,
+                        "render_completed": False,
+                    }
+                    return ToolResult("vimax_manga2video", True, json.dumps(payload, ensure_ascii=False, indent=2), payload)
+
+                self.session_index.update_stage(session_id, "rendering", f"Rendering manga2video series ({stop_after})")
+                _write_render_status(
+                    working_dir,
+                    status="rendering",
+                    payload={"session_id": session_id, "render_mode": "manga2video_series", "stop_after": stop_after, "render_started": True, "render_completed": False},
+                )
+                image_generator = _build_image_generator()
+                if stop_after == "full":
+                    video_generator = _build_video_generator()
+                elif stop_after == "frames":
+                    try:
+                        video_generator = _build_video_generator()
+                    except RuntimeError:
+                        video_generator = dummy
+                else:
+                    video_generator = dummy
+                render_pipeline = Manga2VideoPipeline(
+                    chat_model=chat_model,
+                    image_generator=image_generator,
+                    video_generator=video_generator,
+                    working_dir=manga_dir,
+                    num_image_candidates=num_image_candidates,
+                )
+                with _suppress_pipeline_output():
+                    render_out = await render_pipeline.render_series(
+                        style=style,
+                        user_requirement=user_requirement,
+                        stop_after=stop_after,
+                        episode_range=episode_range_arg,
+                        progress=_pipeline_progress(runtime, session_id),
+                        quiet=True,
+                    )
+                if stop_after == "full":
+                    final_paths = [
+                        _safe_relative(ep.final_video_path, self.workspace_root)
+                        for ep in render_out.episodes
+                        if ep.final_video_path
+                    ]
+                    self.session_index.clear_stale(session_id)
+                    self.session_index.update_stage(session_id, "rendered", "Manga series episodes rendered")
+                    payload = {
+                        "session_id": session_id,
+                        "render_mode": "manga2video_series",
+                        "stop_after": stop_after,
+                        "total_chapters": render_out.total_chapters,
+                        "episode_count": len(render_out.episodes),
+                        "completed_episodes": render_out.completed_episodes,
+                        "render_started": True,
+                        "render_completed": True,
+                        "final_video_paths": final_paths,
+                        "final_video_path": final_paths[0] if final_paths else None,
+                    }
+                    _write_render_status(working_dir, status="rendered", payload=payload)
+                else:
+                    self.session_index.update_stage(session_id, f"rendered_{stop_after}", f"Manga series stopped after {stop_after}")
+                    payload = {
+                        "session_id": session_id,
+                        "render_mode": "manga2video_series",
+                        "stop_after": stop_after,
+                        "total_chapters": series_plan.total_chapters,
+                        "episode_count": len(series_plan.episodes),
+                        "render_started": True,
+                        "render_completed": False,
+                        "final_video_paths": [],
+                        "final_video_path": None,
+                        "stopped_output_count": len(render_out) if isinstance(render_out, (list, dict)) else 0,
+                    }
+                    _write_render_status(working_dir, status=f"stopped_after_{stop_after}", payload=payload)
+                return ToolResult("vimax_manga2video", True, json.dumps(payload, ensure_ascii=False, indent=2), payload)
+
+            self.session_index.update_stage(session_id, "manga_planning", "Ingesting and planning manga episode")
+            if runtime:
+                runtime.emit_progress("Starting manga2video episode planning", stage="starting", metadata={"session_id": session_id})
+                await asyncio.sleep(0)
+
+            plan = await _run_planning_step(
+                "Planning manga episode from comic sources",
+                "manga_plan_episode",
+                plan_pipeline.plan_episode(
+                    sources=resolved_sources or None,
+                    chapter_range=chapter_range_arg,
+                    character_refs=resolved_char_refs or None,
+                    upload_image_paths=image_uploads,
+                    style=style,
+                    user_requirement=user_requirement,
+                    episode_title=episode_title,
+                    progress=_pipeline_progress(runtime, session_id),
+                    quiet=True,
+                ),
+                runtime,
+                {"session_id": session_id},
+            )
+
+            checklist = self.session_index.artifact_checklist(session_id)
+            ready = _manga_mode_ready(checklist)
+            self.session_index.update_stage(
+                session_id,
+                "manga_planned" if ready else "manga_planning",
+                f"Manga episode planned ({len(plan.scenes)} scenes, {plan.total_beats} beats)",
+            )
+
+            if not auto_render:
+                payload = {
+                    "session_id": session_id,
+                    "render_mode": "manga2video",
+                    "working_dir": _safe_relative(working_dir, self.workspace_root),
+                    "chapters": plan.chapters,
+                    "scene_count": len(plan.scenes),
+                    "total_beats": plan.total_beats,
+                    "character_count": len(plan.characters),
+                    "ready_for_render": ready,
+                    "render_started": False,
+                    "render_completed": False,
+                }
+                return ToolResult("vimax_manga2video", True, json.dumps(payload, ensure_ascii=False, indent=2), payload)
+
+            self.session_index.update_stage(session_id, "rendering", f"Rendering manga2video ({stop_after})")
+            _write_render_status(
+                working_dir,
+                status="rendering",
+                payload={"session_id": session_id, "render_mode": "manga2video", "stop_after": stop_after, "render_started": True, "render_completed": False},
+            )
+            image_generator = _build_image_generator()
+            if stop_after == "full":
+                video_generator = _build_video_generator()
+            elif stop_after == "frames":
+                try:
+                    video_generator = _build_video_generator()
+                except RuntimeError:
+                    video_generator = dummy
+            else:
+                video_generator = dummy
+            render_pipeline = Manga2VideoPipeline(
+                chat_model=chat_model,
+                image_generator=image_generator,
+                video_generator=video_generator,
+                working_dir=manga_dir,
+                num_image_candidates=num_image_candidates,
+            )
+            with _suppress_pipeline_output():
+                render_out = await render_pipeline.render_episode(
+                    style=style,
+                    user_requirement=user_requirement,
+                    stop_after=stop_after,
+                    progress=_pipeline_progress(runtime, session_id),
+                    quiet=True,
+                )
+
+            if stop_after == "full":
+                self.session_index.clear_stale(session_id)
+                self.session_index.update_stage(session_id, "rendered", "Manga episode final video rendered")
+                payload = {
+                    "session_id": session_id,
+                    "render_mode": "manga2video",
+                    "stop_after": stop_after,
+                    "chapters": plan.chapters,
+                    "scene_count": len(plan.scenes),
+                    "total_beats": plan.total_beats,
+                    "render_started": True,
+                    "render_completed": True,
+                    "final_video_path": _safe_relative(render_out, self.workspace_root),
+                }
+                _write_render_status(working_dir, status="rendered", payload=payload)
+            else:
+                self.session_index.update_stage(session_id, f"rendered_{stop_after}", f"Manga episode stopped after {stop_after}")
+                payload = {
+                    "session_id": session_id,
+                    "render_mode": "manga2video",
+                    "stop_after": stop_after,
+                    "chapters": plan.chapters,
+                    "scene_count": len(plan.scenes),
+                    "total_beats": plan.total_beats,
+                    "render_started": True,
+                    "render_completed": False,
+                    "final_video_path": None,
+                    "stopped_output_count": len(render_out) if isinstance(render_out, (list, dict)) else 0,
+                }
+                _write_render_status(working_dir, status=f"stopped_after_{stop_after}", payload=payload)
+
+            return ToolResult("vimax_manga2video", True, json.dumps(payload, ensure_ascii=False, indent=2), payload)
+
+        except Exception as exc:
+            unwrapped = _unwrap_retry_error(exc)
+            error_text = _sanitize_error_text(str(unwrapped))
+            self.session_index.update_stage(session_id, "error", f"manga2video failed: {error_text}")
+            payload = {
+                "error_type": "manga2video_failed",
+                "retryable": _is_retryable_render_error(unwrapped),
+                "session_id": session_id,
+                "error": error_text,
+            }
+            _write_render_status(working_dir, status="error", payload=payload)
+            return ToolResult("vimax_manga2video", False, f"manga2video failed: {error_text}", payload)
 
     def _resolve_session(self, session_id: str, *, idea: str, script: str, user_requirement: str, style: str) -> dict[str, Any]:
         requested_source = idea or script
@@ -550,11 +1083,11 @@ def _llm_request_timeout_seconds() -> float:
 
 
 def _narrative_max_tokens() -> int:
-    raw = os.environ.get("VIMAX_NARRATIVE_MAX_TOKENS", "8192")
+    raw = os.environ.get("VIMAX_NARRATIVE_MAX_TOKENS", "16384")
     try:
         return max(256, int(raw))
     except ValueError:
-        return 8192
+        return 16384
 
 
 def _pipeline_progress(runtime: ToolRuntimeContext | None, session_id: str, *, scene_index: int | None = None):
@@ -865,6 +1398,23 @@ def _load_characters(path: Path) -> list[CharacterInScene]:
     return [CharacterInScene.model_validate(item) for item in json.loads(path.read_text(encoding="utf-8"))]
 
 
+def _discover_session_manga_uploads(working_dir: Path) -> tuple[list[Path], list[Path]]:
+    uploads_dir = working_dir / "uploads"
+    if not uploads_dir.is_dir():
+        return [], []
+    archives: list[Path] = []
+    images: list[Path] = []
+    for item in sorted(uploads_dir.iterdir(), key=lambda p: p.name.lower()):
+        if not item.is_file():
+            continue
+        ext = item.suffix.lower()
+        if ext in ARCHIVE_EXTENSIONS or ext == ".pdf":
+            archives.append(item)
+        elif ext in IMAGE_EXTENSIONS:
+            images.append(item)
+    return archives, images
+
+
 def _load_script_text(working_dir: Path) -> str:
     script_text = working_dir / "script2video" / "script.txt"
     if script_text.exists():
@@ -922,6 +1472,121 @@ def _strip_markdown_fences(text: str) -> str:
     return "\n".join(lines).strip()
 
 
+def _invalidate_shot_media_dir(shot_dir: Path, removed: list[str]) -> None:
+    if not shot_dir.is_dir():
+        return
+    exact_files = (
+        "first_frame.png",
+        "last_frame.png",
+        "first_frame_selector_output.json",
+        "last_frame_selector_output.json",
+        "video.mp4",
+    )
+    for fname in exact_files:
+        p = shot_dir / fname
+        if p.exists():
+            p.unlink(missing_ok=True)
+            removed.append(str(p))
+    for pattern in ("transition_video_from_shot_*.mp4", "new_camera_*.png", "speech_*.mp3"):
+        for p in shot_dir.glob(pattern):
+            p.unlink(missing_ok=True)
+            removed.append(str(p))
+    for dir_name in ("first_frame_candidates", "last_frame_candidates"):
+        d = shot_dir / dir_name
+        if d.exists():
+            shutil.rmtree(d, ignore_errors=True)
+            removed.append(str(d))
+
+
+def _clear_final_outputs(scene_dir: Path, removed: list[str], *, remove_camera_tree: bool = False) -> None:
+    for pattern in (
+        "final_video*.mp4",
+        "final_video_*.srt",
+        "final_video_*.ass",
+        ".subtitles_burned_*.json",
+        "timeline_manifest.json",
+    ):
+        for p in scene_dir.glob(pattern):
+            p.unlink(missing_ok=True)
+            removed.append(str(p))
+    if remove_camera_tree:
+        cam_tree = scene_dir / "camera_tree.json"
+        if cam_tree.exists():
+            cam_tree.unlink(missing_ok=True)
+            removed.append(str(cam_tree))
+
+
+def invalidate_render_artifacts(
+    working_dir: Path,
+    *,
+    shot_idxs: list[int] | None = None,
+    scene_idx: int | None = None,
+    episode_idx: int | None = None,
+    force: bool = False,
+    stale_flags: dict[str, Any] | None = None,
+) -> list[str]:
+    """Selectively or completely clear cached render media while preserving planning JSONs and character portraits."""
+    removed: list[str] = []
+    stale_cam_tree = bool((stale_flags or {}).get("camera_tree"))
+
+    def _invalidate_scene_tree(base_dir: Path) -> None:
+        target_scenes = (
+            [base_dir / f"scene_{scene_idx}"]
+            if scene_idx is not None
+            else sorted(base_dir.glob("scene_*"))
+        )
+        for scene_dir in target_scenes:
+            if not scene_dir.is_dir():
+                continue
+            _clear_final_outputs(scene_dir, removed, remove_camera_tree=stale_cam_tree)
+            shots_root = scene_dir / "shots"
+            if not shots_root.is_dir():
+                continue
+            if shot_idxs is not None:
+                for idx in shot_idxs:
+                    _invalidate_shot_media_dir(shots_root / str(idx), removed)
+            elif force:
+                for shot_dir in sorted(shots_root.iterdir()):
+                    if shot_dir.is_dir():
+                        _invalidate_shot_media_dir(shot_dir, removed)
+
+    script_dir = working_dir / "script2video"
+    if script_dir.is_dir():
+        _clear_final_outputs(script_dir, removed, remove_camera_tree=stale_cam_tree)
+        shots_root = script_dir / "shots"
+        if shots_root.is_dir():
+            if shot_idxs is not None:
+                for idx in shot_idxs:
+                    _invalidate_shot_media_dir(shots_root / str(idx), removed)
+            elif force:
+                for shot_dir in sorted(shots_root.iterdir()):
+                    if shot_dir.is_dir():
+                        _invalidate_shot_media_dir(shot_dir, removed)
+
+    idea_dir = working_dir / "idea2video"
+    if idea_dir.is_dir():
+        _clear_final_outputs(idea_dir, removed, remove_camera_tree=False)
+        _invalidate_scene_tree(idea_dir)
+
+    manga_dir = working_dir / "manga2video"
+    if manga_dir.is_dir():
+        _clear_final_outputs(manga_dir, removed, remove_camera_tree=False)
+        _invalidate_scene_tree(manga_dir)
+        episodes_dir = manga_dir / "episodes"
+        if episodes_dir.is_dir():
+            target_eps = (
+                [episodes_dir / f"ep_{episode_idx:03d}"]
+                if episode_idx is not None
+                else sorted(episodes_dir.glob("ep_*"))
+            )
+            for ep_dir in target_eps:
+                if not ep_dir.is_dir():
+                    continue
+                _clear_final_outputs(ep_dir, removed, remove_camera_tree=False)
+                _invalidate_scene_tree(ep_dir)
+    return removed
+
+
 def _stale_keys_for_revision(target: str) -> list[str]:
     if "storyboard.json" in target:
         return ["shot_descriptions", "camera_tree", "frames", "clips", "final_video"]
@@ -931,13 +1596,13 @@ def _stale_keys_for_revision(target: str) -> list[str]:
         return ["frames", "clips", "final_video"]
     if target.endswith("script.json") or target.endswith("story.txt"):
         return ["storyboard", "shot_descriptions", "camera_tree", "frames", "clips", "final_video"]
-    if target.endswith("characters.json"):
+    if target.endswith("characters.json") or target.endswith("series_characters.json"):
         return ["storyboard", "shot_descriptions", "frames", "clips", "final_video"]
     return ["frames", "clips", "final_video"]
 
 
 def _ready_for_render(checklist: dict[str, bool]) -> bool:
-    return _idea_mode_ready(checklist) or _script_mode_ready(checklist) or _novel_mode_ready(checklist)
+    return _idea_mode_ready(checklist) or _script_mode_ready(checklist) or _novel_mode_ready(checklist) or _manga_mode_ready(checklist)
 
 
 def _missing_render_dependencies(checklist: dict[str, bool]) -> list[str]:
@@ -946,7 +1611,31 @@ def _missing_render_dependencies(checklist: dict[str, bool]) -> list[str]:
     idea_required = ["idea2video/story.txt", "idea2video/characters.json", "idea2video/script.json", "idea2video/scene_*/storyboard.json", "idea2video/scene_*/shots/*/shot_description.json", "idea2video/scene_*/camera_tree.json"]
     script_required = ["script2video/script.txt", "script2video/characters.json", "script2video/storyboard.json", "script2video/shots/*/shot_description.json", "script2video/camera_tree.json"]
     novel_required = ["novel2video/novel/novel_compressed.txt", "novel2video/events/event_*.json", "novel2video/relevant_chunks/event_*", "novel2video/scenes/event_*/scene_*.json", "novel2video/global_information/characters/event_level/*.json", "novel2video/global_information/characters/novel_level/*.json"]
-    return [f"idea mode: {path}" for path in idea_required if not checklist.get(path)] + [f"script mode: {path}" for path in script_required if not checklist.get(path)] + [f"novel mode: {path}" for path in novel_required if not checklist.get(path)]
+    if checklist.get("manga2video/series_manifest.json") or checklist.get("manga2video/episodes/ep_*/episode_plan.json"):
+        manga_required = [
+            "manga2video/comic_manifest.json",
+            "manga2video/characters.json",
+            "manga2video/series_manifest.json",
+            "manga2video/episodes/ep_*/episode_plan.json",
+            "manga2video/episodes/ep_*/scene_*/storyboard.json",
+            "manga2video/episodes/ep_*/scene_*/shots/*/shot_description.json",
+            "manga2video/episodes/ep_*/scene_*/camera_tree.json",
+        ]
+    else:
+        manga_required = [
+            "manga2video/comic_manifest.json",
+            "manga2video/characters.json",
+            "manga2video/episode_plan.json",
+            "manga2video/scene_*/storyboard.json",
+            "manga2video/scene_*/shots/*/shot_description.json",
+            "manga2video/scene_*/camera_tree.json",
+        ]
+    return (
+        [f"idea mode: {path}" for path in idea_required if not checklist.get(path)]
+        + [f"script mode: {path}" for path in script_required if not checklist.get(path)]
+        + [f"novel mode: {path}" for path in novel_required if not checklist.get(path)]
+        + [f"manga mode: {path}" for path in manga_required if not checklist.get(path)]
+    )
 
 
 def _idea_mode_ready(checklist: dict[str, bool]) -> bool:
@@ -959,6 +1648,33 @@ def _novel_text_ready(checklist: dict[str, bool]) -> bool:
 
 def _novel_mode_ready(checklist: dict[str, bool]) -> bool:
     return bool(checklist.get("novel2video/novel/novel_compressed.txt") and checklist.get("novel2video/events/event_*.json") and checklist.get("novel2video/relevant_chunks/event_*") and checklist.get("novel2video/scenes/event_*/scene_*.json") and checklist.get("novel2video/global_information/characters/event_level/*.json") and checklist.get("novel2video/global_information/characters/novel_level/*.json"))
+
+
+def _manga_single_mode_ready(checklist: dict[str, bool]) -> bool:
+    return bool(
+        checklist.get("manga2video/comic_manifest.json")
+        and checklist.get("manga2video/characters.json")
+        and checklist.get("manga2video/episode_plan.json")
+        and checklist.get("manga2video/scene_*/storyboard.json")
+        and checklist.get("manga2video/scene_*/shots/*/shot_description.json")
+        and checklist.get("manga2video/scene_*/camera_tree.json")
+    )
+
+
+def _manga_series_mode_ready(checklist: dict[str, bool]) -> bool:
+    return bool(
+        checklist.get("manga2video/comic_manifest.json")
+        and checklist.get("manga2video/characters.json")
+        and checklist.get("manga2video/series_manifest.json")
+        and checklist.get("manga2video/episodes/ep_*/episode_plan.json")
+        and checklist.get("manga2video/episodes/ep_*/scene_*/storyboard.json")
+        and checklist.get("manga2video/episodes/ep_*/scene_*/shots/*/shot_description.json")
+        and checklist.get("manga2video/episodes/ep_*/scene_*/camera_tree.json")
+    )
+
+
+def _manga_mode_ready(checklist: dict[str, bool]) -> bool:
+    return _manga_single_mode_ready(checklist) or _manga_series_mode_ready(checklist)
 
 
 def _script_mode_ready(checklist: dict[str, bool]) -> bool:

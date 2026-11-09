@@ -1,4 +1,4 @@
-ViMax supports three separate workflows: `idea2video`, `script2video`, and `novel2video`.
+ViMax supports four separate workflows: `idea2video`, `script2video`, `novel2video`, and `manga2video`.
 
 Idea2Video workflow DAG:
 
@@ -17,7 +17,7 @@ input_idea
 ```
 
 `.working_dir/<session_id-or-run_id>/` is the artifact authority. `.vimax/sessions.json` is only a session index. `.vimax/memory.md` stores user preferences only.
-All workflow artifact directories must live under the active session directory: `.working_dir/<session_id-or-run_id>/idea2video/`, `.working_dir/<session_id-or-run_id>/script2video/`, and `.working_dir/<session_id-or-run_id>/novel2video/`. Never read from or write to `.working_dir/idea2video/`, `.working_dir/script2video/`, or `.working_dir/novel2video/` at the root level.
+All workflow artifact directories must live under the active session directory: `.working_dir/<session_id-or-run_id>/idea2video/`, `.working_dir/<session_id-or-run_id>/script2video/`, `.working_dir/<session_id-or-run_id>/novel2video/`, and `.working_dir/<session_id-or-run_id>/manga2video/`. Never read from or write to `.working_dir/idea2video/`, `.working_dir/script2video/`, `.working_dir/novel2video/`, or `.working_dir/manga2video/` at the root level.
 
 Use `view_image` when the user asks you to inspect, compare, diagnose, or revise an existing generated frame or portrait. Base visual claims on the returned pixels, not on filenames, prompts, or metadata alone. `view_image` only reads images inside the active session workspace and does not modify artifacts.
 
@@ -63,3 +63,17 @@ novel_text
 ```
 
 Novel2Video requires explicit novel prose. Only use `vimax_novel_planning` when the user provides long prose, a novel excerpt, or explicitly asks to use supplied novel text. Novel planning stores the source at `novel2video/novel/novel.txt`, then produces `novel2video/novel/novel_compressed.txt` and downstream novel artifacts. Do not infer or fabricate a novel from a vague idea; use idea2video for vague ideas and script2video for explicit scripts. `vimax_novel_planning` only creates structured text artifacts under `novel2video/`; it does not generate portraits, scene videos, or final video. After novel structured text artifacts exist, do not render unless the user explicitly asks for scene render or end-to-end generation.
+
+Manga2Video workflow DAG:
+
+```text
+comic_sources (images / .cbz / .pdf / webtoon urls)
+  -> comic_manifest + normalized pages
+  -> vision_chunks + canon_characters + seed_refs
+  -> scene_scripts + beat_maps + panel_anchors
+  -> scene_*/storyboard + shot_decomposition + camera_tree + shot_panel_refs
+  -> shared anime character_portraits turnarounds
+  -> panel-anchored keyframes -> native JP anime video_clips -> Vietsub final_video.mp4
+```
+
+Use `vimax_manga2video` when the user provides comic/manga/manhwa/webtoon folders, `.cbz`/`.zip`, `.pdf`, or LINE Webtoon URLs, or uploaded comic archives inside `<session>/uploads/`. Multi-chapter episodes use `chapter_range` (e.g. `"1-3"` or `[1, 2]`). To adapt an entire multi-chapter series automatically into numbered episodes (`manga2video/episodes/ep_001/`, `ep_002/`, ...) with shared cross-episode character portraits, pass `chapters_per_episode >= 1` (plus optional `episode_range`). Character reference images uploaded to `<session>/uploads/` or passed via `character_refs` override cropped character seeds while preserving distinct physical forms (e.g. Human vs Cat Form). Use `auto_render=True` (default) for full A-Z generation, `stop_after="portraits"` / `"frames"` for milestone inspection, or `vimax_render_video` to resume or selectively invalidate and re-render weak shots.

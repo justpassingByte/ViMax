@@ -241,5 +241,59 @@ class OpenRouterVideoGeneratorTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("textless", captured["payload"]["prompt"])
 
 
+    async def test_transient_koda_tool_path_error_retries_while_region_refusal_fails_fast(self):
+        create_calls = {"n": 0}
+
+        async def fake_post_json(url, *, headers, payload, timeout, hard_timeout_seconds):
+            create_calls["n"] += 1
+            return 200, {"id": f"vid-koda-{create_calls['n']}", "status": "queued"}
+
+        async def fake_get_json_tool_err(url, *, headers, timeout, hard_timeout_seconds):
+            if url.endswith("vid-koda-1"):
+                return 200, {
+                    "status": "failed",
+                    "error": "模型未生成媒体，仅返回文本: 生成工具报错找不到我传入的文件路径",
+                }
+            return 200, {"status": "completed", "url": "https://cdn.example/fixed.mp4"}
+
+        async def fake_get_bytes(url, *, headers, timeout, hard_timeout_seconds):
+            return 200, b"fixed-mp4"
+
+        async def fake_sleep(seconds):
+            return None
+
+        generator = VideoGeneratorOpenRouterAPI(
+            api_key="m2a_test",
+            model="muse-video",
+            base_url="http://127.0.0.1:18610/v1",
+        )
+        with patch.dict(os.environ, {"VIMAX_VIDEO_RETRY_DELAY_SECONDS": "0"}, clear=True), \
+             patch("tools.video_generator_openrouter_api._post_json", fake_post_json), \
+             patch("tools.video_generator_openrouter_api._get_json", fake_get_json_tool_err), \
+             patch("tools.video_generator_openrouter_api._get_bytes", fake_get_bytes), \
+             patch("tools.video_generator_openrouter_api.asyncio.sleep", fake_sleep):
+            output = await generator.generate_single_video(prompt="rain scene")
+
+        self.assertEqual(create_calls["n"], 2)
+        self.assertEqual(output.data, b"fixed-mp4")
+
+        create_calls["n"] = 0
+
+        async def fake_get_json_region(url, *, headers, timeout, hard_timeout_seconds):
+            return 200, {
+                "status": "failed",
+                "error": "模型未生成媒体，仅返回文本: 该国家/地区当前不支持视频生成",
+            }
+
+        with patch.dict(os.environ, {"VIMAX_VIDEO_RETRY_DELAY_SECONDS": "0"}, clear=True), \
+             patch("tools.video_generator_openrouter_api._post_json", fake_post_json), \
+             patch("tools.video_generator_openrouter_api._get_json", fake_get_json_region), \
+             patch("tools.video_generator_openrouter_api.asyncio.sleep", fake_sleep):
+            with self.assertRaises(RuntimeError):
+                await generator.generate_single_video(prompt="rain scene")
+
+        self.assertEqual(create_calls["n"], 1)
+
+
 if __name__ == "__main__":
     unittest.main()

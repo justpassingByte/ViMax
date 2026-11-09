@@ -18,29 +18,66 @@ class OpenRouterVideoAPIError(RuntimeError):
         super().__init__(message)
 
 
-_NON_RETRYABLE_VIDEO_MARKERS = (
+_HARD_REFUSAL_MARKERS = (
     "key limit",
     "quota",
     "额度不足",
+    "积分不足",
+    "out of credits",
     "insufficient",
     "invalid api key",
     "unauthorized",
     "forbidden",
     "payment required",
-    "模型未生成媒体",
-    "仅返回文本",
     "已被 muse.ai 登出",
-    "refusal",
-    "refused",
+    "国家/地区",
+    "country",
+    "region",
+    "不支持视频生成",
     "content filter",
     "policy",
     "prohibited",
     "nsfw",
 )
 
+_TRANSIENT_VIDEO_TOOL_MARKERS = (
+    "找不到我传入的文件路径",
+    "找不到文件路径",
+    "生成工具报错",
+    "生成工具出错",
+    "file not found",
+    "no such file",
+    "path not found",
+    "tool error",
+    "tool failed",
+    "temporarily unavailable",
+    "please try again",
+    "请稍后重试",
+    "请重新尝试",
+)
+
+_NON_RETRYABLE_VIDEO_MARKERS = _HARD_REFUSAL_MARKERS + (
+    "模型未生成媒体",
+    "仅返回文本",
+    "refusal",
+    "refused",
+)
+
+
+def _is_transient_video_tool_error(text: str) -> bool:
+    lowered = str(text or "").lower()
+    if any(marker in lowered for marker in _HARD_REFUSAL_MARKERS):
+        return False
+    return any(marker in lowered for marker in _TRANSIENT_VIDEO_TOOL_MARKERS)
+
 
 def _is_retryable_video_error(exc: BaseException) -> bool:
     if isinstance(exc, (aiohttp.ClientError, asyncio.TimeoutError)):
+        return True
+    text = str(exc).lower()
+    if any(marker in text for marker in _HARD_REFUSAL_MARKERS):
+        return False
+    if _is_transient_video_tool_error(text):
         return True
     if isinstance(exc, OpenRouterVideoAPIError):
         if exc.explicit_retryable is not None:
@@ -49,7 +86,6 @@ def _is_retryable_video_error(exc: BaseException) -> bool:
             return exc.status_code in {408, 409, 425, 429} or exc.status_code >= 500
     if isinstance(exc, ValueError):
         return False
-    text = str(exc).lower()
     if any(marker in text for marker in _NON_RETRYABLE_VIDEO_MARKERS):
         return False
     return isinstance(exc, OpenRouterVideoAPIError)
@@ -234,7 +270,11 @@ class VideoGeneratorOpenRouterAPI:
                     err_lower = str(err_detail).lower()
                     retryable = (
                         status == "failed"
-                        and not any(marker in err_lower for marker in _NON_RETRYABLE_VIDEO_MARKERS)
+                        and not any(marker in err_lower for marker in _HARD_REFUSAL_MARKERS)
+                        and (
+                            _is_transient_video_tool_error(err_lower)
+                            or not any(marker in err_lower for marker in _NON_RETRYABLE_VIDEO_MARKERS)
+                        )
                     )
                     raise OpenRouterVideoAPIError(
                         None,
@@ -248,7 +288,7 @@ class VideoGeneratorOpenRouterAPI:
                 retryable=False,
             )
 
-        max_attempts = max(1, _env_int("VIMAX_VIDEO_MAX_ATTEMPTS", 2))
+        max_attempts = max(1, _env_int("VIMAX_VIDEO_MAX_ATTEMPTS", 3))
         retry_delay_seconds = _env_float("VIMAX_VIDEO_RETRY_DELAY_SECONDS", 2.0)
 
         for attempt in range(1, max_attempts + 1):

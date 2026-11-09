@@ -43,11 +43,23 @@ const FIELD_LABELS: Record<string, string> = {
   shot_idx: 'Shot',
   scene_idx: 'Scene',
   camera_idx: 'Camera',
+  episode_idx: 'Episode',
 };
 
 const FILE_TITLES: Record<string, string> = {
   'camera_tree.json': 'Camera plan',
   'characters.json': 'Characters',
+  'series_characters.json': 'Series characters',
+  'series_manifest.json': 'Series plan',
+  'series_state.json': 'Series status',
+  'series_character_seed_refs.json': 'Series character seeds',
+  'character_portraits_registry.json': 'Character portraits registry',
+  'character_seed_refs.json': 'Character seed references',
+  'episode_plan.json': 'Episode plan',
+  'comic_manifest.json': 'Comic manifest',
+  'shot_panel_refs.json': 'Shot panel references',
+  'beat_map.json': 'Beat map',
+  'timeline_manifest.json': 'Timeline manifest',
   'script.json': 'Script',
   'shot_description.json': 'Shot description',
   'storyboard.json': 'Storyboard',
@@ -68,6 +80,7 @@ export function relatedVisualArtifacts(documentArtifact: Artifact, artifacts: Ar
   const documentDirectory = parentArtifactPath(documentPath);
   const shotDirectory = documentPath.match(/^(.*\/shots\/\d+)(?:\/|$)/i)?.[1];
   const sceneDirectory = documentPath.match(/^(.*\/scene_\d+)(?:\/|$)/i)?.[1];
+  const episodeDirectory = documentPath.match(/^(.*\/episodes\/ep_\d+)(?:\/|$)/i)?.[1];
   const workflowRoot = documentPath.split('/')[0] || '';
   const name = documentArtifact.name.toLowerCase();
 
@@ -75,8 +88,27 @@ export function relatedVisualArtifacts(documentArtifact: Artifact, artifacts: Ar
     const mediaPath = normalizeArtifactPath(artifact.path);
     if (shotDirectory) return parentArtifactPath(mediaPath) === shotDirectory;
     if (sceneDirectory) return mediaPath.startsWith(`${sceneDirectory}/`);
-    if (name === 'characters.json' || name === 'character_portraits_registry.json') {
+    if (
+      name === 'characters.json'
+      || name === 'series_characters.json'
+      || name === 'character_portraits_registry.json'
+      || name === 'character_seed_refs.json'
+      || name === 'series_character_seed_refs.json'
+    ) {
       return mediaPath.startsWith(`${workflowRoot}/character_portraits/`);
+    }
+    if (name === 'series_manifest.json' || name === 'series_state.json') {
+      return (
+        mediaPath.startsWith(`${workflowRoot}/character_portraits/`)
+        || (
+          mediaPath.startsWith(`${workflowRoot}/episodes/`)
+          && /\/ep_\d+\/final_video[^/]*\.mp4$/i.test(mediaPath)
+        )
+      );
+    }
+    if (name === 'episode_plan.json') {
+      const scope = episodeDirectory || workflowRoot;
+      return mediaPath.startsWith(`${scope}/scene_`) || mediaPath === `${scope}/final_video.mp4`;
     }
     if (name === 'script.json') {
       return mediaPath.startsWith(`${workflowRoot}/scene_`) || mediaPath === `${workflowRoot}/final_video.mp4`;
@@ -102,9 +134,11 @@ export function isArtifactPathField(key: string): boolean {
 export function friendlyArtifactTitle(artifact: Artifact): string {
   const baseTitle = FILE_TITLES[artifact.name.toLowerCase()]
     || artifact.name.replace(/\.json$/i, '').replace(/[_-]+/g, ' ').replace(/\b\w/g, (character) => character.toUpperCase());
+  const episodeMatch = artifact.path.match(/(?:^|\/)episodes\/ep_(\d+)(?:\/|$)/i);
   const sceneMatch = artifact.path.match(/(?:^|\/)scene_(\d+)(?:\/|$)/i);
   const shotMatch = artifact.path.match(/(?:^|\/)shots\/(\d+)(?:\/|$)/i);
   const context = [];
+  if (episodeMatch) context.push(`Ep ${Number(episodeMatch[1])}`);
   if (sceneMatch) context.push(`Scene ${Number(sceneMatch[1]) + 1}`);
   if (shotMatch) context.push(`Shot ${Number(shotMatch[1]) + 1}`);
   return context.length ? `${context.join(' · ')} · ${baseTitle}` : baseTitle;
@@ -112,7 +146,7 @@ export function friendlyArtifactTitle(artifact: Artifact): string {
 
 export function structuredRecordTitle(value: JsonValue, index: number, artifact: Artifact): string {
   if (isJsonObject(value)) {
-    for (const key of ['name', 'title', 'character_name', 'scene_title']) {
+    for (const key of ['name', 'title', 'episode_title', 'character_name', 'scene_title']) {
       const candidate = value[key];
       if (typeof candidate === 'string' && candidate.trim()) return candidate.trim();
     }
@@ -209,7 +243,8 @@ export function isJsonPrimitive(value: JsonValue): value is string | number | bo
 function recordNoun(artifact: Artifact): string {
   const name = artifact.name.toLowerCase();
   if (name === 'storyboard.json' || name === 'shot_description.json') return 'Shot';
-  if (name === 'characters.json') return 'Character';
+  if (name === 'characters.json' || name === 'series_characters.json') return 'Character';
+  if (name === 'series_manifest.json') return 'Episode';
   if (name === 'script.json') return 'Scene';
   return 'Item';
 }

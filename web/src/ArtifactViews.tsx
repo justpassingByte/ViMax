@@ -468,6 +468,7 @@ function mediaUrl(artifact: Artifact): string {
 }
 
 function visualArtifactLabel(artifact: Artifact): string {
+  const episode = artifact.path.match(/(?:^|\/)episodes\/ep_(\d+)(?:\/|$)/i)?.[1];
   const scene = artifact.path.match(/(?:^|\/)scene_(\d+)(?:\/|$)/i)?.[1];
   const shot = artifact.path.match(/(?:^|\/)shots\/(\d+)(?:\/|$)/i)?.[1];
   const portrait = artifact.path.match(/(?:^|\/)character_portraits\/([^/]+)\/([^/]+)$/i);
@@ -477,6 +478,7 @@ function visualArtifactLabel(artifact: Artifact): string {
     .replace(/\b\w/g, (character) => character.toUpperCase());
   if (portrait) return `${portrait[1]} · ${base}`;
   const context = [];
+  if (episode !== undefined) context.push(`Ep ${Number(episode)}`);
   if (scene !== undefined) context.push(`Scene ${Number(scene) + 1}`);
   if (shot !== undefined) context.push(`Shot ${Number(shot) + 1}`);
   return context.length > 0 ? `${context.join(' · ')} · ${base}` : base;

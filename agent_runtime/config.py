@@ -20,11 +20,11 @@ DEFAULT_EMBEDDING_MODEL_PROVIDER = "openai"
 DEFAULT_RERANKER_MODEL = "BAAI/bge-reranker-v2-m3"
 
 
-@lru_cache(maxsize=4)
-def load_agent_config(workspace_root: str | Path = ".") -> dict[str, Any]:
-    path = Path(workspace_root).resolve() / "configs" / "agent.local.yaml"
-    if not path.exists():
+@lru_cache(maxsize=8)
+def _load_agent_config_by_stat(resolved_path: str, mtime_ns: int, size: int) -> dict[str, Any]:
+    if mtime_ns < 0:
         return {}
+    path = Path(resolved_path)
     try:
         payload = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     except yaml.YAMLError as exc:
@@ -32,6 +32,19 @@ def load_agent_config(workspace_root: str | Path = ".") -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise RuntimeError("configs/agent.local.yaml must be a YAML mapping")
     return payload
+
+
+def load_agent_config(workspace_root: str | Path = ".") -> dict[str, Any]:
+    path = Path(workspace_root).resolve() / "configs" / "agent.local.yaml"
+    try:
+        st = path.stat()
+        mtime_ns, size = int(st.st_mtime_ns), int(st.st_size)
+    except OSError:
+        mtime_ns, size = -1, -1
+    return _load_agent_config_by_stat(str(path), mtime_ns, size)
+
+
+load_agent_config.cache_clear = _load_agent_config_by_stat.cache_clear  # type: ignore[attr-defined]
 
 
 def config_value(section: str, key: str, env_names: list[str], default: str = "", workspace_root: str | Path = ".") -> str:

@@ -2,7 +2,7 @@ import {mkdtemp, mkdir, readFile, stat, writeFile} from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import {afterEach, describe, expect, it} from 'vitest';
-import {deleteSession, listSessionArtifacts, readSessionHistory, readSessionState, resolveArtifactPath, storeWorkspaceUpload} from './server-lib.mjs';
+import {artifactContentType, deleteSession, listSessionArtifacts, readSessionHistory, readSessionState, resolveArtifactPath, storeWorkspaceUpload} from './server-lib.mjs';
 
 const roots = [];
 
@@ -77,6 +77,49 @@ describe('web bridge state', () => {
     const artifacts = await listSessionArtifacts(root, 'session-1');
     expect(artifacts[0]).toMatchObject({kind: 'image', name: 'first_frame.png'});
     expect(() => resolveArtifactPath(root, 'session-1', '../../secrets')).toThrow(/escapes/);
+  });
+
+  it('prioritizes series deliverables and portraits ahead of 500+ raw comic source images', async () => {
+    const root = await fixture();
+    const mangaRoot = path.join(root, '.working_dir', 'session-1', 'manga2video');
+    const sourcesDir = path.join(mangaRoot, 'sources', 'ch_01');
+    const anchorsDir = path.join(mangaRoot, 'panel_anchors');
+    const portraitDir = path.join(mangaRoot, 'character_portraits', '0_Kayden');
+    const ep1Dir = path.join(mangaRoot, 'episodes', 'ep_001');
+    const ep2SceneDir = path.join(mangaRoot, 'episodes', 'ep_002', 'scene_0');
+    await Promise.all([
+      mkdir(sourcesDir, {recursive: true}),
+      mkdir(anchorsDir, {recursive: true}),
+      mkdir(portraitDir, {recursive: true}),
+      mkdir(ep1Dir, {recursive: true}),
+      mkdir(ep2SceneDir, {recursive: true}),
+    ]);
+
+    const writeBulk = [];
+    for (let i = 0; i < 300; i += 1) {
+      writeBulk.push(writeFile(path.join(sourcesDir, `p_${String(i).padStart(4, '0')}.jpg`), 'raw'));
+      writeBulk.push(writeFile(path.join(anchorsDir, `a_${String(i).padStart(4, '0')}.jpg`), 'anchor'));
+    }
+    await Promise.all([
+      ...writeBulk,
+      writeFile(path.join(mangaRoot, 'series_manifest.json'), '{}'),
+      writeFile(path.join(portraitDir, 'front.png'), 'portrait'),
+      writeFile(path.join(ep1Dir, 'final_video.mp4'), 'mp4'),
+      writeFile(path.join(ep1Dir, 'final_video_vietsub.srt'), '1\n00:00:00,000 --> 00:00:01,000\nXin chao\n'),
+      writeFile(path.join(ep2SceneDir, 'storyboard.json'), '[]'),
+    ]);
+
+    const artifacts = await listSessionArtifacts(root, 'session-1');
+    expect(artifacts.length).toBeLessThanOrEqual(500);
+    const paths = new Set(artifacts.map((item) => item.path));
+    expect(paths.has('manga2video/series_manifest.json')).toBe(true);
+    expect(paths.has('manga2video/character_portraits/0_Kayden/front.png')).toBe(true);
+    expect(paths.has('manga2video/episodes/ep_001/final_video.mp4')).toBe(true);
+    expect(paths.has('manga2video/episodes/ep_001/final_video_vietsub.srt')).toBe(true);
+    expect(paths.has('manga2video/episodes/ep_002/scene_0/storyboard.json')).toBe(true);
+    const srtArtifact = artifacts.find((item) => item.name === 'final_video_vietsub.srt');
+    expect(srtArtifact?.kind).toBe('document');
+    expect(artifactContentType('final_video_vietsub.srt')).toBe('text/plain; charset=utf-8');
   });
 
   it('stores uploads inside the session without overwriting matching names', async () => {

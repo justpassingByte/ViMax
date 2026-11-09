@@ -1,4 +1,6 @@
 import asyncio
+import os
+from uuid import uuid4
 from typing import List, Literal, Optional, Union
 from PIL import Image
 
@@ -34,8 +36,12 @@ class VideoOutput:
         Args:
             path (str): Path where the video will be saved.
         """
-        with open(path, 'wb') as f:
+        parent_dir = os.path.dirname(path) or "."
+        os.makedirs(parent_dir, exist_ok=True)
+        tmp_path = os.path.join(parent_dir, f".{os.path.basename(path)}.{uuid4().hex[:8]}.tmp")
+        with open(tmp_path, 'wb') as f:
             f.write(self.data)
+        os.replace(tmp_path, path)
 
     def save(self, path: str) -> None:
         save_func = getattr(self, f"save_{self.fmt}")

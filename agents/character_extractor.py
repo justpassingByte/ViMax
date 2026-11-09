@@ -85,6 +85,9 @@ class CharacterExtractor:
         chain = self.chat_model | parser
 
         response: ExtractCharactersResponse = await chain.ainvoke(messages)
+        characters = list(response.characters or [])
+        if not characters and len(str(script or "").strip()) >= 120:
+            raise ValueError("CharacterExtractor extracted 0 characters from a non-trivial script")
 
-        return response.characters
+        return characters
 

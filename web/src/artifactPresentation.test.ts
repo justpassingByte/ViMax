@@ -22,6 +22,8 @@ describe('artifact presentation', () => {
 
   it('creates readable artifact and field labels', () => {
     expect(friendlyArtifactTitle(artifact)).toBe('Scene 1 · Storyboard');
+    expect(friendlyArtifactTitle(makeArtifact('manga2video/episodes/ep_002/scene_0/storyboard.json'))).toBe('Ep 2 · Scene 1 · Storyboard');
+    expect(friendlyArtifactTitle(makeArtifact('manga2video/series_manifest.json'))).toBe('Series plan');
     expect(friendlyFieldLabel('motion_desc')).toBe('Motion');
     expect(friendlyFieldLabel('custom_camera_note')).toBe('Custom Camera Note');
   });
@@ -134,6 +136,28 @@ describe('artifact presentation', () => {
       makeMediaArtifact('idea2video/scene_0/shots/0/first_frame.png', 'image'),
     ]);
     expect(visuals.map((item) => item.path)).toEqual(['idea2video/character_portraits/alex/front.png']);
+  });
+
+  it('pairs series manifests and episode plans cleanly across multi-episode trees', () => {
+    const media = [
+      makeMediaArtifact('manga2video/character_portraits/0_Kayden/front.png', 'image'),
+      makeMediaArtifact('manga2video/sources/ch_01/p001.jpg', 'image'),
+      makeMediaArtifact('manga2video/episodes/ep_001/final_video.mp4', 'video'),
+      makeMediaArtifact('manga2video/episodes/ep_001/scene_0/shots/0/first_frame.png', 'image'),
+      makeMediaArtifact('manga2video/episodes/ep_002/scene_0/shots/0/first_frame.png', 'image'),
+      makeMediaArtifact('manga2video/episodes/ep_002/final_video.mp4', 'video'),
+    ];
+    const seriesVisuals = relatedVisualArtifacts(makeArtifact('manga2video/series_manifest.json'), media);
+    expect(seriesVisuals.map((item) => item.path)).toEqual([
+      'manga2video/character_portraits/0_Kayden/front.png',
+      'manga2video/episodes/ep_001/final_video.mp4',
+      'manga2video/episodes/ep_002/final_video.mp4',
+    ]);
+    const ep2Visuals = relatedVisualArtifacts(makeArtifact('manga2video/episodes/ep_002/episode_plan.json'), media);
+    expect(ep2Visuals.map((item) => item.path)).toEqual([
+      'manga2video/episodes/ep_002/final_video.mp4',
+      'manga2video/episodes/ep_002/scene_0/shots/0/first_frame.png',
+    ]);
   });
 });
 

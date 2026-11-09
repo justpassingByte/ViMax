@@ -3,6 +3,17 @@ from .character import CharacterInScene, CharacterInEvent, CharacterInNovel
 from .event import Event
 from .frame import Frame
 from .image_output import ImageOutput
+from .manga import (
+    MangaBeat,
+    MangaCharacterObservation,
+    MangaChunkExtraction,
+    MangaDialogueLine,
+    MangaEpisodePlan,
+    MangaEpisodeScene,
+    MangaSeriesEpisodeEntry,
+    MangaSeriesPlan,
+    ShotPanelAnchor,
+)
 from .scene import Scene
 from .shot_description import ShotDescription, ShotBriefDescription
 from .video_output import VideoOutput
@@ -15,8 +26,17 @@ __all__ = [
     "Event",
     "Frame",
     "ImageOutput",
+    "MangaBeat",
+    "MangaCharacterObservation",
+    "MangaChunkExtraction",
+    "MangaDialogueLine",
+    "MangaEpisodePlan",
+    "MangaEpisodeScene",
+    "MangaSeriesEpisodeEntry",
+    "MangaSeriesPlan",
     "Scene",
     "ShotBriefDescription",
     "ShotDescription",
+    "ShotPanelAnchor",
     "VideoOutput",
 ]

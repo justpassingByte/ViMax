@@ -46,12 +46,22 @@ The user will provide the following input.
 - When designing a new shot, first consider whether it can be filmed using an existing camera position. Introduce a new one only if the shot size, angle, and focus differ significantly. If the camera undergoes significant movement, it cannot be used thereafter.
 - Keep character names in visual descriptions and speaker fields consistent with the character list. In visual descriptions, enclose names in angle brackets (e.g., <Alice>), but not in dialogue or speaker fields.
 - When describing visual elements, it is necessary to indicate the position of the element within the frame. For example, Character A is on the left side of the frame, facing toward the right, with a table in front of him. The table is positioned slightly to the left of the center of the frame. Ensure that invisible elements are not included. For instance, do not describe someone behind a closed door if they cannot be seen.
-- Avoid unsafe content (violence, discrimination, etc.) in visual descriptions. Use indirect methods like sound or suggestive imagery when needed, and substitute sensitive elements (e.g., ketchup for blood).
+- Avoid unsafe content (violence, discrimination, etc.) in visual descriptions. Use indirect methods like sound, ragged clothing, or dusty crimson battle scuffs rather than graphic gore (NEVER substitute literal "ketchup").
 - Assign at most one dialogue line per character per shot. Each line of dialogue should correspond to a shot.
-- Target ~8 seconds per shot (~7-8 shots per minute). When the user specifies a target runtime (e.g., 3 min -> ~23 shots, 5 min -> ~38 shots, 10 min -> ~75 shots), generate enough distinct shots to fulfill that duration with smooth narrative progression rather than compressing the story too short or lingering redundantly on near-static beats. Keep spoken audio concise (at most 1-2 short spoken lines totaling <= 20-25 words per shot) so voice/lip-sync fits inside 8 seconds without clipping.
+- Target ~8 seconds per speech/establishing shot (~4-5 seconds per fast action beat). When the user specifies a target runtime (e.g., 3 min -> ~23 shots, 5 min -> ~38 shots, 10 min -> ~75 shots, 20 min full anime episode -> ~160-180 shots), generate enough distinct shots to fulfill that duration with smooth narrative progression rather than compressing the story too short or lingering redundantly on near-static beats.
+- CRITICAL SPOKEN DIALOGUE LENGTH BUDGET (ZERO MID-SENTENCE CUTOFFS): Each rendered clip is strictly 8 seconds long, and native video-to-speech leaves a ~1-1.5s visual settle window. Keep spoken dialogue in any single shot concise at **at most 1 brief sentence or clause totaling <= 12-15 spoken words** (finishing comfortably within ~4.5-6.0 seconds) so the character NEVER gets cut off mid-sentence! Whenever a line or narration exceeds 15 words or has multiple dramatic beats, ALWAYS split it across 2-3 consecutive continuous shots (`continuity_from_prev=True` + varied framing/reaction shots).
 - Each shot requires an independent description without reference to each other.
 - When the shot focuses on a character, describe which specific body part the focus is on.
 - When describing a character, it is necessary to indicate the direction they are facing.
+- Anime Adaptation & Life-or-Death Combat Direction:
+  - Break action scenes into an escalating sequence of concrete physical beats instead of collapsing a fight into 1-2 hurried shots: (1) incoming ambush/telegraph, (2) high-speed evasion or block with spark/wind shockwaves, (3) brutal counterattack & environmental destruction (cracked ground, flying debris, ragged/torn clothing, scorch marks, heavy breathing), (4) desperate survival gambit under overwhelming pressure, (5) aftermath or scene transition.
+  - Depict life-or-death stakes ("thập tử nhất sinh") intensely yet policy-safely for visual AI generators: convey exhaustion and desperation through torn/tattered coat hems, dusty scrapes/scuffs, trembling stance, kneeling in rain, flickering unstable aura, shattered concrete, and dramatic slanted (Dutch) angles—avoid graphic gore, dismemberment, or excessive blood pools.
+  - Maintain consistent 180-degree screen direction and battle damage across consecutive fight shots: set `continuity_from_prev=True` when Shot N directly picks up the momentum, pose trajectory, battle state, or lighting from Shot N-1's ending state.
+  - Use explicit transitions: `transition_in="fade_black"` on major time/location switches (e.g., storm night -> quiet dawn alley), `"crossfade"` for soft flashbacks or warm emotional closes, and `"cut"` within continuous action.
+  - Use `target_duration_sec` (`3.5` to `5.0`) on silent kinetic action hits/dodges/reaction flashes for crisp anime tempo; leave `target_duration_sec=None` on shots containing spoken dialogue, narration, or calm establishing beats so voices never speed up or clip.
+- CRITICAL JSON FORMATTING & VIETSUB RULE:
+  - Wrap the valid JSON output inside a ```json fenced code block. Inside JSON string values, quote spoken lines with single quotes `'...'` (or properly escaped `\"`) and NEVER leave raw unescaped double quotes inside strings.
+  - Whenever `<SCRIPT>` includes a `(Vietsub: ...)` line for a beat or dialogue, ALWAYS preserve `(Vietsub: ...)` verbatim inside that shot's `audio_desc` right after the dialogue/thought line.
 """
 
 
@@ -106,9 +116,11 @@ Additionally, you will receive a sequence of potential characters, each containi
 (1) 'large' cases typically involve the exaggerated transition shots which means a significant change in the composition and focus, such as smoothly changing from a wide shot to a close-up. It is usually accompanied by significant camera movement (e.g., drone perspective shots across the city).
 (2) 'medium' cases often involve the introduction of new characters and a character turns from the back to face the front (facing the camera).
 (3) 'small' cases usually involve minor changes, such as expression changes, movement and pose changes of existing characters(e.g., walking, sitting down, standing up), moderate camera movements(e.g., pan, tilt, track).
+- CRITICAL KEYFRAME ANCHORING RULE FOR ANIME ACTION: Any shot involving combat clashes, dodging, leaping, knocking back, falling, teleporting, projectile blasts, environmental destruction, or major pose/camera shifts MUST be labeled 'medium' or 'large' (NEVER 'small'), with clearly distinct starting pose (`ff_desc`) and climax/impact pose (`lf_desc`), so both `first_frame` and `last_frame` keyframes anchor the motion. Reserve 'small' strictly for quiet dialogue, subtle breathing, blinking, or gentle camera holds.
 - When describing a character, it is necessary to indicate the direction they are facing.
 - The first shot must establish the overall scene environment, using the widest possible shot.
 - Use as few camera positions as possible.
+- CRITICAL JSON FORMATTING: Wrap the valid JSON output inside a ```json fenced code block. Inside JSON string values, quote dialogue/narration with single quotes `'...'` (NEVER raw unescaped double quotes inside JSON strings).
 """
 
 
@@ -183,7 +195,7 @@ class StoryboardArtist:
         script: str,
         characters: List[CharacterInScene],
         user_requirement: Optional[str] = None,
-        retry_timeout: int = 150,
+        retry_timeout: int = 240,
     ) -> List[ShotBriefDescription]:
 
         class StoryboardResponse(BaseModel):
@@ -217,7 +229,7 @@ class StoryboardArtist:
         self,
         shot_brief_desc: ShotBriefDescription,
         characters: List[CharacterInScene],
-        retry_timeout: int = 150,
+        retry_timeout: int = 180,
     ) -> ShotDescription:
         parser = PydanticOutputParser(pydantic_object=VisDescDecompositionResponse)
         prompt_template = ChatPromptTemplate.from_messages(
@@ -259,6 +271,9 @@ class StoryboardArtist:
             lf_vis_char_idxs=decomposition.lf_vis_char_idxs,
             motion_desc=decomposition.motion_desc,
             audio_desc=shot_brief_desc.audio_desc,
+            transition_in=getattr(shot_brief_desc, "transition_in", "cut"),
+            continuity_from_prev=getattr(shot_brief_desc, "continuity_from_prev", False),
+            target_duration_sec=getattr(shot_brief_desc, "target_duration_sec", None),
         )
 
 

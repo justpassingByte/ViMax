@@ -1,11 +1,13 @@
 import os
 import re
 import inspect
+import asyncio
 import logging
 import cv2
 from typing import List, Tuple, Union, Optional
 from pydantic import BaseModel, Field
 from tenacity import retry, stop_after_attempt
+from utils.retry import after_func
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.output_parsers import PydanticOutputParser
 from utils.robust_json_parser import TrailingCommaTolerantPydanticOutputParser as PydanticOutputParser
@@ -57,6 +59,7 @@ Shot 1: Close-up of the Alice's face. Her expression shifts from surprise to del
 - Only one camera can exist without a parent.
 - When describing the elements lost in a shot, carefully compare the details between the parent shot and the child shot. For example, the parent shot is a medium shot of Character A and Character B facing each other (both in profile to the camera), while the child shot is a close-up of Character A (with Character A facing the camera directly). In this case, the child shot lacks the frontal view information of Character A.
 - The first camera must be the root of the camera tree.
+- Scene-Change & Chronological Cohesion (Critical for Anime): Never parent a small close-up or reaction shot before an establishing wide shot of the same new scene, and do not connect a shot marked `[transition_in=fade_black]` backward to an unrelated distant beat when a wide establishing shot in the same setting better anchors the new scene (or chronologically precedes it). Within continuous battle exchanges (`[continuity_from_prev]`), preserve strictly forward temporal order rather than skipping shots.
 """
 
 
@@ -121,10 +124,12 @@ class CameraImageGenerator:
         self.video_generator = video_generator
 
 
+    @retry(stop=stop_after_attempt(3), after=after_func)
     async def construct_camera_tree(
         self,
         cameras: List[Camera],
         shot_descs: List[Union[ShotDescription, ShotBriefDescription]],
+        retry_timeout: int = 180,
     ) -> List[Camera]:
         parser = PydanticOutputParser(pydantic_object=CameraTreeResponse)
         shot_desc_by_idx = {shot.idx: shot for shot in shot_descs}
@@ -136,7 +141,14 @@ class CameraImageGenerator:
                 shot_desc = shot_desc_by_idx.get(shot_idx)
                 if shot_desc is None:
                     raise ValueError(f"Camera {cam.idx} references missing shot {shot_idx}")
-                camera_seq_str += f"Shot {shot_idx}: {shot_desc.visual_desc}\n"
+                tags = []
+                transition_in = getattr(shot_desc, "transition_in", "cut")
+                if transition_in and transition_in != "cut":
+                    tags.append(f"transition_in={transition_in}")
+                if getattr(shot_desc, "continuity_from_prev", False):
+                    tags.append("continuity_from_prev=true")
+                tag_str = f" [{' '.join(tags)}]" if tags else ""
+                camera_seq_str += f"Shot {shot_idx}{tag_str}: {shot_desc.visual_desc}\n"
             camera_seq_str += f"</CAMERA_{cam.idx}>\n"
         camera_seq_str += "</CAMERA_SEQ>"
 
@@ -146,7 +158,10 @@ class CameraImageGenerator:
         ]
 
         chain = self.chat_model | parser
-        response: CameraTreeResponse = await chain.ainvoke(messages)
+        response: CameraTreeResponse = await asyncio.wait_for(
+            chain.ainvoke(messages),
+            timeout=retry_timeout,
+        )
         parent_items = response.camera_parent_items
         if len(parent_items) != len(cameras):
             raise ValueError(f"Camera tree response length mismatch: expected {len(cameras)}, got {len(parent_items)}")

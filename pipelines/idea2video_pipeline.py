@@ -2,6 +2,7 @@ import os
 import shutil
 import logging
 from agents import Screenwriter, CharacterExtractor, CharacterPortraitsGenerator
+from agents.screenwriter import is_valid_developed_story
 from pipelines.script2video_pipeline import Script2VideoPipeline, _scoped_progress
 from interfaces import CharacterInScene
 from typing import Any, Callable, List, Dict, Optional
@@ -72,13 +73,16 @@ class Idea2VideoPipeline:
                 characters = json.load(f)
             characters = [CharacterInScene.model_validate(
                 character) for character in characters]
-            _pipeline_print(quiet, f"🚀 Loaded {len(characters)} characters from existing file.")
-        else:
-            characters = await self.character_extractor.extract_characters(story)
-            with open(save_path, "w", encoding="utf-8") as f:
-                json.dump([character.model_dump()
-                          for character in characters], f, ensure_ascii=False, indent=4)
-            _pipeline_print(quiet, f"✅ Extracted {len(characters)} characters from story and saved to {save_path}.")
+            if characters or len(str(story or "").strip()) < 120:
+                _pipeline_print(quiet, f"🚀 Loaded {len(characters)} characters from existing file.")
+                return characters
+            _pipeline_print(quiet, "⚠️ Cached characters.json is empty for a non-trivial story; regenerating.")
+
+        characters = await self.character_extractor.extract_characters(story)
+        with open(save_path, "w", encoding="utf-8") as f:
+            json.dump([character.model_dump()
+                      for character in characters], f, ensure_ascii=False, indent=4)
+        _pipeline_print(quiet, f"✅ Extracted {len(characters)} characters from story and saved to {save_path}.")
 
         return characters
 
@@ -132,13 +136,16 @@ class Idea2VideoPipeline:
         if os.path.exists(save_path):
             with open(save_path, "r", encoding="utf-8") as f:
                 story = f.read()
-            _pipeline_print(quiet, f"🚀 Loaded story from existing file.")
-        else:
-            _pipeline_print(quiet, "🧠 Developing story...")
-            story = await self.screenwriter.develop_story(idea=idea, user_requirement=user_requirement)
-            with open(save_path, "w", encoding="utf-8") as f:
-                f.write(story)
-            _pipeline_print(quiet, f"✅ Developed story and saved to {save_path}.")
+            if is_valid_developed_story(story):
+                _pipeline_print(quiet, f"🚀 Loaded story from existing file.")
+                return story
+            _pipeline_print(quiet, "⚠️ Cached story.txt is degenerate or truncated; regenerating.")
+
+        _pipeline_print(quiet, "🧠 Developing story...")
+        story = await self.screenwriter.develop_story(idea=idea, user_requirement=user_requirement)
+        with open(save_path, "w", encoding="utf-8") as f:
+            f.write(story)
+        _pipeline_print(quiet, f"✅ Developed story and saved to {save_path}.")
 
         return story
 
@@ -152,13 +159,16 @@ class Idea2VideoPipeline:
         if os.path.exists(save_path):
             with open(save_path, "r", encoding="utf-8") as f:
                 script = json.load(f)
-            _pipeline_print(quiet, f"🚀 Loaded script from existing file.")
-        else:
-            _pipeline_print(quiet, "🧠 Writing script based on story...")
-            script = await self.screenwriter.write_script_based_on_story(story=story, user_requirement=user_requirement)
-            with open(save_path, "w", encoding="utf-8") as f:
-                json.dump(script, f, ensure_ascii=False, indent=4)
-            _pipeline_print(quiet, f"✅ Written script based on story and saved to {save_path}.")
+            if isinstance(script, list) and [str(s).strip() for s in script if str(s).strip()]:
+                _pipeline_print(quiet, f"🚀 Loaded script from existing file.")
+                return script
+            _pipeline_print(quiet, "⚠️ Cached script.json is empty; regenerating.")
+
+        _pipeline_print(quiet, "🧠 Writing script based on story...")
+        script = await self.screenwriter.write_script_based_on_story(story=story, user_requirement=user_requirement)
+        with open(save_path, "w", encoding="utf-8") as f:
+            json.dump(script, f, ensure_ascii=False, indent=4)
+        _pipeline_print(quiet, f"✅ Written script based on story and saved to {save_path}.")
         return script
 
     async def generate_portraits_for_single_character(
@@ -273,6 +283,10 @@ class Idea2VideoPipeline:
             _pipeline_print(quiet, f"🚀 Skipped concatenating videos, already exists.")
         else:
             _pipeline_print(quiet, f"🎬 Starting concatenating videos...")
-            concatenate_video_files(all_video_paths, final_video_path)
+            concatenate_video_files(
+                all_video_paths,
+                final_video_path,
+                scene_fade_sec=0.35 if len(all_video_paths) > 1 else 0.0,
+            )
             _pipeline_print(quiet, f"☑️ Concatenated videos, saved to {final_video_path}.")
         return final_video_path

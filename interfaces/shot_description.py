@@ -19,7 +19,7 @@ class ShotBriefDescription(BaseModel):
     )
     visual_desc: str = Field(
         description='''A vivid and detailed visual description of the shot that convey rich visual information through text. The character identifiers in the description must match those in the character list and be enclosed in angle brackets (e.g., <Alice>, <Bob>). All visible characters should be described.
-        If there is a conversation, please write down the content of the conversation), when you meet some dialogue, you should write into the visual content description with :" " symbols and the character's features (eg. <SLING> (male, late 20s, Texan accent softened by military precision, confident and energetic.) says: "Gear retracted. Flaps transitioning. Flight path stable. You are clear to climb."). 
+        If there is a conversation, summarize or quote the line using single quotes '...' (avoid raw nested double quotes inside JSON strings, e.g., <SLING> says: 'Gear retracted. Flaps transitioning.').
         ''',
         examples=[
             "An over-the-shoulder shot at eye level, positioned behind <Alice>. The foreground, including <Alice>'s shoulder and head, is softly blurred, directing focus onto <Bob>'s face. <Bob>'s subtle reactions—shifting from surprise to delight—are clearly visible. The supermarket background is gently blurred with cool fluorescent lighting.",
@@ -29,55 +29,28 @@ class ShotBriefDescription(BaseModel):
 
     # audio
     audio_desc: str = Field(
-        description="A detailed description of the audio in the shot.",
+        description="A detailed description of the audio in the shot. If the script includes [Speaker]/[Thought] lines or (Vietsub: ...), preserve them verbatim using single quotes if needed.",
         examples=[
             "[Sound Effect] Ambient sound (supermarket background noise, shopping cart wheels rolling)",
-            "[Speaker] Alice (Happy): Hello, how are you?",
+            "[Speaker] Alice (Happy): 'Hello, how are you?' (Vietsub: Chào bạn, bạn khỏe không?)",
             None,
         ],
     )
-
-    # sound_effect: Optional[str] = Field(
-    #     default=None,
-    #     description="The sound effects used in the shot.",
-    #     examples=[
-    #         "Ambient sound (supermarket background noise, shopping cart wheels rolling)",
-    #         None,
-    #     ],
-    # )
-    # speaker: Optional[str] = Field(
-    #     default=None,
-    #     description="The speaker in the shot, if applicable. If there is no speaker, this field should be set to None.",
-    #     examples=[
-    #         "Alice",
-    #         None,
-    #     ],
-    # )
-    # is_speaker_lip_visible: Optional[bool] = Field(
-    #     default=None,
-    #     description="Indicates whether the speaker's lips are visible in the shot. If there is no speaker, this field should be set to None.",
-    #     examples=[
-    #         True,
-    #         False,
-    #         None,
-    #     ],
-    # )
-    # line: Optional[str] = Field(
-    #     default=None,
-    #     description="The dialogue or monologue in the shot, if applicable. If there is a speaker, there must be a line. If there is no speaker, this field should be set to None.",
-    #     examples=[
-    #         "Hello, how are you?",
-    #         None,
-    #     ],
-    # )
-    # emotion: Optional[str] = Field(
-    #     default=None,
-    #     description="The emotion of the speaker when delivering the line, if applicable. If there is a speaker, there must be an emotion. If there is no speaker, this field should be set to None.",
-    #     examples=[
-    #         "Happy",
-    #         None,
-    #     ],
-    # )
+    transition_in: Literal["cut", "crossfade", "fade_black"] = Field(
+        default="cut",
+        description="Editorial transition from the previous shot into this shot: 'cut' for continuous action or sharp impacts, 'crossfade' for gentle emotional/flashback/closing dissolves, 'fade_black' for clear time skips or location shifts.",
+        examples=["cut", "fade_black", "crossfade"],
+    )
+    continuity_from_prev: bool = Field(
+        default=False,
+        description="Set True when this shot immediately continues the spatial momentum, battle condition, lighting, and screen direction from the previous shot's ending frame.",
+        examples=[False, True],
+    )
+    target_duration_sec: Optional[float] = Field(
+        default=None,
+        description="Optional editorial duration (in seconds) for post-render pacing of silent anime action beats (e.g., 3.5-5.0s). Leave None for spoken dialogue shots or full ~8s beats.",
+        examples=[None, 4.0, 3.5],
+    )
 
     def __str__(self):
         s = f"Shot {self.idx}:\n"
@@ -103,7 +76,7 @@ class ShotDescription(BaseModel):
     )
     visual_desc: str = Field(
         description='''A vivid and detailed visual description of the shot that convey rich visual information through text. The character identifiers in the description must match those in the character list and be enclosed in angle brackets (e.g., <Alice>, <Bob>).
-        If there is a conversation, please write down the content of the conversation), when you meet some dialogue, you should write into the visual content description with :" " symbols and the character's features (eg. <SLING> (male, late 20s, Texan accent softened by military precision, confident and energetic.) says: "Gear retracted. Flaps transitioning. Flight path stable. You are clear to climb."). ''',
+        If there is dialogue, quote it using single quotes '...' rather than raw double quotes inside JSON strings (e.g., <SLING> says: 'Gear retracted.'). ''',
         examples=[
             "An over-the-shoulder shot at eye level, positioned behind <Alice>. The foreground, including <Alice>'s shoulder and head, is softly blurred, directing focus onto <Bob>'s face. <Bob>'s subtle reactions—shifting from surprise to delight—are clearly visible. The supermarket background is gently blurred with cool fluorescent lighting.",
         ]
@@ -151,35 +124,30 @@ class ShotDescription(BaseModel):
     )
     motion_desc: str = Field(
         description='''The motion description of the shot.
-        If there is a conversation, please write down the content of the conversation), when you meet some dialogue, you should write into the visual content description with :" " symbols and the character's features (eg. SLING (male, late 20s, Texan accent softened by military precision, confident and energetic.) says: "Gear retracted. Flaps transitioning. Flight path stable. You are clear to climb."). If there is a narration, you should write into the visual content description with :" " symbols and the narration's features (eg. Narration: "Everything is looking good. "). ''',
+        If there is dialogue or narration, use single quotes '...' rather than raw double quotes inside JSON strings (e.g., SLING says: 'Gear retracted.' or Narration: 'Everything looks quiet.'). ''',
     )
 
     # audio
     audio_desc: str = Field(
-        description="A detailed description of the audio in the shot.",
+        description="A detailed description of the audio in the shot, preserving any [Speaker]/[Thought] and (Vietsub: ...) lines.",
         examples=[
             "[Sound Effect] Ambient sound (supermarket background noise, shopping cart wheels rolling)",
-            "[Speaker] Alice (Happy): Hello, how are you?",
+            "[Speaker] Alice (Happy): 'Hello, how are you?' (Vietsub: Chào bạn, bạn khỏe không?)",
             None,
         ],
     )
-    # sound_effect: Optional[str] = Field(
-    #     default=None,
-    #     description="The sound effects used in the shot. For example, a door creaking or footsteps approaching.",
-    # )
-    # speaker: Optional[str] = Field(
-    #     default=None,
-    #     description="The speaker in the shot, if applicable. If there is no speaker, this field should be set to None.",
-    # )
-    # is_speaker_lip_visible: Optional[bool] = Field(
-    #     default=None,
-    #     description="Indicates whether the speaker's lips are visible in the shot. If there is no speaker, this field should be set to None.",
-    # )
-    # line: Optional[str] = Field(
-    #     default=None,
-    #     description="The dialogue or monologue in the shot, if applicable. If there is a speaker, there must be a line. If there is no speaker, this field should be set to None.",
-    # )
-    # emotion: Optional[str] = Field(
-    #     default=None,
-    #     description="The emotion of the speaker when delivering the line, if applicable. If there is a speaker, there must be an emotion. If there is no speaker, this field should be set to None.",
-    # )
+    transition_in: Literal["cut", "crossfade", "fade_black"] = Field(
+        default="cut",
+        description="Editorial transition from the previous shot into this shot: 'cut', 'crossfade', or 'fade_black'.",
+        examples=["cut", "fade_black", "crossfade"],
+    )
+    continuity_from_prev: bool = Field(
+        default=False,
+        description="Whether this shot directly anchors its opening visual state to the previous shot's ending frame.",
+        examples=[False, True],
+    )
+    target_duration_sec: Optional[float] = Field(
+        default=None,
+        description="Optional post-render target duration (in seconds) for non-dialogue action pacing while keeping both opening and ending keyframes intact.",
+        examples=[None, 4.0, 3.5],
+    )

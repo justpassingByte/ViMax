@@ -34,7 +34,7 @@ The user will provide an idea within <IDEA> and </IDEA> tags and a user requirem
 - User Requirement (Optional): Optional constraints or guidelines the user may specify. For example,
     - Target Audience: e.g., Children (7-12), Young Adults, Adults, All Ages.
     - Story Type/Genre: e.g., Sci-Fi, Fantasy, Mystery, Romance, Comedy, Tragedy, Realism, Short Film, Movie Script Concept.
-    - Length: e.g., 5 key scenes, a tight story suitable for a 10-minute short film.
+    - Length: e.g., 5 key scenes, a tight story suitable for a 10-minute short film or 20-minute anime premiere episode.
     - Other: e.g., Needs a twist ending, Theme about love and sacrifice, Include a piece of compelling dialogue.
 
 [Output]
@@ -55,7 +55,8 @@ Main Characters Introduction: Briefly introduce the core characters, including t
 - Logical Consistency: Ensure that event progression and character actions within the story have logical motives and internal consistency, avoiding abrupt or contradictory plots.
 - Show, Don't Tell: Reveal characters' personalities and emotions through their actions, dialogues, and details, rather than stating them flatly. For example, use "He clenched - his fist, nails digging deep into his palm" instead of "He was very angry."
 - Originality & Compliance: Generate original content based on the user's idea, avoiding direct plagiarism of well-known existing works. The generated content must be positive, healthy, and comply with general content safety policies.
-- Runtime & Shot Pacing (When Duration Is Requested): Downstream video clips average ~8 seconds per shot (~7-8 shots per minute). If the user requests a target runtime (e.g., 3 min -> ~23 shots, 5 min -> ~38 shots, 10 min -> ~75 shots across ~8-12 scenes), develop enough distinct scenes, dramatic turns, and dialogue beats to sustain that full runtime without filler.
+- Runtime & Shot Pacing (When Duration Is Requested): Downstream video clips average ~6.5-8 seconds per beat (~7-9 shots per minute). If the user requests a target runtime (e.g., 3 min -> ~23 shots, 5 min -> ~38 shots, 10 min -> ~75 shots, 20 min full anime episode -> ~160-180 shots across ~6-10 scenes), develop enough distinct scenes, multi-exchange combat beats, dramatic turns, and concise dialogue beats to sustain that full runtime without filler.
+- Direct Prose Delivery (CRITICAL): Write the complete creative story prose directly inside your response. NEVER invoke external workspace tools, NEVER reply with meta verification summaries (e.g., "Verified before delivery..."), and NEVER collapse the story into field/code syntax.
 """
 
 human_prompt_template_develop_story = \
@@ -89,7 +90,7 @@ You will receive a story within <STORY> and </STORY> tags and a user requirement
 - Story: A complete or partial narrative text, which may contain one or more scenes. The story will provide plot, characters, dialogues, and background descriptions.
 - User Requirement (Optional): A user requirement, which may be empty. The user requirement may include:
     - Target audience (e.g., children, teenagers, adults).
-    - Script genre (e.g., micro-film, moive, short drama).
+    - Script genre (e.g., micro-film, moive, short drama, anime).
     - Desired number of scenes (e.g., "divide into 3 scenes").
     - Other specific instructions (e.g., emphasize dialogue or action).
 
@@ -103,7 +104,8 @@ You will receive a story within <STORY> and </STORY> tags and a user requirement
 - Coherence and Fluidity: Ensure natural transitions between scenes and overall story flow. Avoid abrupt plot jumps.
 - Visual Enhancement Principles: All descriptions must be "filmable". Use concrete actions instead of abstract emotions (e.g., "He turns away to avoid eye contact" instead of "He feels ashamed"). Decribe rich environmental details include lighting, props, weather, etc., to enhance the atmosphere. Visualize character performances such as express internal states through facial expressions, gestures, and movements (e.g., "She bites her lip, her hands trembling" to imply nervousness).
 - Consistency: Ensure dialogue and actions align with the original story's intent, without deviating from the core plot.
-- Beat & Dialogue Pacing (~8s per Shot): Break each scene into concrete, filmable visual beats targeting ~7-8 shots per minute when a target duration is given (~75 shots for 10 minutes). Keep spoken lines concise (1-2 short natural sentences per beat, never dense monologues in a single shot) so dialogue fits cleanly within an 8-second video clip.
+- Beat & Dialogue Pacing (~6.5-8s per Shot, Zero Mid-Sentence Cutoffs): Break each scene into concrete, filmable visual beats (~7-9 shots per minute, e.g., ~160-180 beats for a 20-minute anime episode). Keep each spoken beat to ONE concise sentence or clause (<= 12-15 spoken words) so speech finishes completely before the 8-second cut; split longer speeches or monologues across consecutive beats with action or reaction visuals between them. Decompose fights into distinct physical exchanges (telegraph, dodge, clash, impact damage, desperate counter) rather than single summary lines.
+- Scene Screenplays Only: Output cohesive formatted scene screenplays in the JSON `script` list (one element per scene). Do NOT emit meta checklists or nested per-shot Pydantic JSON inside each scene string; shot decomposition is handled downstream by the StoryboardArtist.
 """
 
 
@@ -119,6 +121,16 @@ human_prompt_template_write_script_based_on_story = \
 """
 
 
+def is_valid_developed_story(text: str) -> bool:
+    clean = (text or "").strip()
+    if len(clean) < 250:
+        return False
+    lowered = clean.lower()
+    if lowered.startswith("verified before delivery") and "\n" not in clean:
+        return False
+    return True
+
+
 class Screenwriter:
     def __init__(
         self,
@@ -126,6 +138,7 @@ class Screenwriter:
     ):
         self.chat_model = chat_model
 
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, max=30), after=after_func)
     async def develop_story(
         self,
         idea: str,
@@ -136,7 +149,11 @@ class Screenwriter:
             ("human", human_prompt_template_develop_story.format(idea=idea, user_requirement=user_requirement)),
         ]
         response = await self.chat_model.ainvoke(messages)
-        story = response.content
+        story = str(getattr(response, "content", response) or "").strip()
+        if not is_valid_developed_story(story):
+            raise ValueError(
+                f"Screenwriter.develop_story returned degenerate or empty output ({len(story)} chars): {story[:120]!r}"
+            )
         return story
 
 
@@ -163,8 +180,7 @@ class Screenwriter:
         ]
         response = await self.chat_model.ainvoke(messages)
         response = parser.parse(response.content)
-        script = response.script
+        script = [str(s).strip() for s in (response.script or []) if str(s).strip()]
+        if not script:
+            raise ValueError("Screenwriter.write_script_based_on_story returned an empty scene list")
         return script
-
-
-

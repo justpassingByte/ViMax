@@ -103,14 +103,20 @@ DEFAULT_MALE_VOICE_ELEVENLABS = "pNInz6obpgDQGcFmaJgB"
 DEFAULT_FEMALE_VOICE_EDGE_TTS = "vi-VN-HoaiMyNeural"
 DEFAULT_MALE_VOICE_EDGE_TTS = "vi-VN-NamMinhNeural"
 
+def _strip_vietsub_annotations(text: str) -> str:
+    cleaned = re.sub(r"\(\s*Vietsub\s*:[^)]*\)", "", text or "", flags=re.IGNORECASE)
+    cleaned = re.sub(r"^\s*Vietsub\s*:[^\n]*\n?", "", cleaned, flags=re.IGNORECASE | re.MULTILINE)
+    return cleaned.strip()
+
+
 def extract_all_dialogues_from_shot(audio_desc: str = "", visual_desc: str = "") -> List[Tuple[str, str]]:
     """Extract all character speakers and dialogue lines from storyboard shot descriptions."""
-    audio_desc = audio_desc or ""
+    audio_desc = _strip_vietsub_annotations(audio_desc or "")
     visual_desc = visual_desc or ""
     dialogues = []
 
-    # 1. Match all [Speaker] Name (Emotion): Dialogue text up to next [Speaker] or [Sound Effect] or end
-    pattern = r'\[Speaker\]\s*([^:\(\[\n]+?)(?:\s*\([^)]*\))?\s*:\s*(.+?)(?=\s*\[Speaker\]|\s*\[Sound Effect\]|$)'
+    # 1. Match all [Speaker] / [Thought] / [Inner Monologue] Name (Emotion): Dialogue text up to next tag or end
+    pattern = r'\[(?:Speaker|Thought|Inner\s*Monologue)\]\s*([^:\(\[\n]+?)(?:\s*\([^)]*\))?\s*:\s*(.+?)(?=\s*\[(?:Speaker|Thought|Inner\s*Monologue|Sound\s*Effect)\]|$)'
     for m in re.finditer(pattern, audio_desc, re.IGNORECASE | re.DOTALL):
         spk = m.group(1).strip().strip('<>"\'')
         txt = m.group(2).strip().strip('"\'')
@@ -350,9 +356,9 @@ def mix_multitrack_video_and_audio(
 
 
 def extract_spoken_dialogues_for_subtitles(audio_desc: str = "", visual_desc: str = "") -> List[Tuple[str, str]]:
-    """Extract spoken character dialogue lines while ignoring [Sound Effect] quote snippets."""
+    """Extract spoken/thought character dialogue lines while ignoring [Sound Effect] quote snippets."""
     audio_no_sfx = re.sub(
-        r'\[Sound Effect\].*?(?=\s*\[Speaker\]|\n|$)',
+        r'\[Sound\s*Effect\].*?(?=\s*\[(?:Speaker|Thought|Inner\s*Monologue)\]|\n|$)',
         '',
         audio_desc or "",
         flags=re.IGNORECASE | re.DOTALL,
@@ -397,6 +403,22 @@ def extract_vietsubs_from_script(script_text: str) -> Dict[int, str]:
         idx = shot_num - 1 if one_based else shot_num
         normalized[idx] = " ".join(parts)
     return normalized
+
+
+def extract_vietsubs_from_shots(shot_descriptions: List[Any]) -> Dict[int, str]:
+    """Extract inline `(Vietsub: ...)` lines stored inside ShotDescription.audio_desc."""
+    extracted: Dict[int, str] = {}
+    inline_re = re.compile(r"\(\s*Vietsub\s*:\s*([^)]+?)\s*\)", re.IGNORECASE)
+    line_re = re.compile(r"^\s*Vietsub\s*:\s*(.+?)\s*$", re.IGNORECASE | re.MULTILINE)
+    for i, sd in enumerate(shot_descriptions or []):
+        audio_desc = str(getattr(sd, "audio_desc", "") or "")
+        parts = [m.group(1).strip() for m in inline_re.finditer(audio_desc) if m.group(1).strip()]
+        if not parts:
+            parts = [m.group(1).strip() for m in line_re.finditer(audio_desc) if m.group(1).strip()]
+        if parts:
+            sd_idx = getattr(sd, "idx", i)
+            extracted[int(sd_idx)] = " ".join(parts)
+    return extracted
 
 
 def _split_subtitle_text(text: str, max_chars: int = 75) -> List[str]:
@@ -445,8 +467,9 @@ def build_subtitle_cues(
     script_vietsubs: Optional[Dict[int, str]] = None,
     translated_dialogues: Optional[Dict[int, str]] = None,
     max_chars_per_cue: int = 75,
+    shot_start_offsets: Optional[List[float]] = None,
 ) -> List[Tuple[float, float, str]]:
-    """Build (start_sec, end_sec, text) cues aligned to rendered shot clip durations."""
+    """Build (start_sec, end_sec, text) cues aligned to rendered shot timeline offsets and durations."""
     script_vietsubs = script_vietsubs or {}
     translated_dialogues = translated_dialogues or {}
     cues: List[Tuple[float, float, str]] = []
@@ -454,6 +477,7 @@ def build_subtitle_cues(
 
     for i, sd in enumerate(shot_descriptions):
         shot_len = float(shot_durations[i]) if i < len(shot_durations) else 8.0
+        base_offset = float(shot_start_offsets[i]) if (shot_start_offsets is not None and i < len(shot_start_offsets)) else current_offset
         sd_idx = getattr(sd, "idx", i)
         text = (
             script_vietsubs.get(sd_idx)
@@ -467,7 +491,14 @@ def build_subtitle_cues(
             lead = min(0.20, shot_len * 0.1)
             tail = min(0.15, shot_len * 0.05)
             usable = max(0.20, shot_len - lead - tail)
-            t0 = current_offset + lead
+            t0 = base_offset + lead
+            t_end = t0 + usable
+            if shot_start_offsets is not None and i + 1 < len(shot_start_offsets):
+                next_start = float(shot_start_offsets[i + 1])
+                if next_start > t0 + 0.06:
+                    gap_margin = 0.04 if next_start - t0 > 0.25 else 0.02
+                    t_end = min(t_end, next_start - gap_margin)
+                    usable = max(0.04, t_end - t0)
             parts = _split_subtitle_text(text, max_chars=max_chars_per_cue)
             if len(parts) == 1:
                 cues.append((t0, t0 + usable, parts[0]))

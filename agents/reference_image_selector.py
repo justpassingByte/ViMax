@@ -179,7 +179,7 @@ class ReferenceImageSelector:
 
             try:
                 ref = await chain.ainvoke(messages)
-                filtered_image_path_and_text_pairs = select_pairs_by_indices(available_image_path_and_text_pairs, ref.ref_image_indices)
+                filtered_image_path_and_text_pairs = select_pairs_by_indices(available_image_path_and_text_pairs, ref.ref_image_indices)[:8] or available_image_path_and_text_pairs[:8]
                 logging.info(f"Filtered image idx:{ref.ref_image_indices}")
                 
             except Exception as e:
@@ -213,7 +213,7 @@ class ReferenceImageSelector:
 
         try:
             response = await chain.ainvoke(messages)
-            reference_image_path_and_text_pairs = select_pairs_by_indices(filtered_image_path_and_text_pairs, response.ref_image_indices)
+            reference_image_path_and_text_pairs = select_pairs_by_indices(filtered_image_path_and_text_pairs, response.ref_image_indices)[:8]
             return {
                 "reference_image_path_and_text_pairs": reference_image_path_and_text_pairs,
                 "text_prompt": response.text_prompt,

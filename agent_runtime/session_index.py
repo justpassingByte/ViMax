@@ -131,6 +131,7 @@ class SessionIndex:
         working_dir = self._working_dir_for_id(final_id)
         (working_dir / "idea2video").mkdir(parents=True, exist_ok=True)
         (working_dir / "script2video").mkdir(parents=True, exist_ok=True)
+        (working_dir / "manga2video").mkdir(parents=True, exist_ok=True)
         record = {
             "session_id": final_id,
             "project_name": clean_project_name,
@@ -192,6 +193,19 @@ class SessionIndex:
         stale = record.setdefault("stale", {key: False for key in STALE_KEYS})
         for key in keys:
             stale[key] = True
+        record["updated_at"] = datetime.now().isoformat(timespec="seconds")
+        self.save(data)
+
+    @_synchronized
+    def clear_stale(self, session_id: str, keys: list[str] | None = None) -> None:
+        data = self.load()
+        record = data.get("sessions", {}).get(session_id)
+        if not isinstance(record, dict):
+            raise KeyError(f"Unknown session_id: {session_id}")
+        stale = record.setdefault("stale", {key: False for key in STALE_KEYS})
+        target_keys = STALE_KEYS if keys is None else keys
+        for key in target_keys:
+            stale[key] = False
         record["updated_at"] = datetime.now().isoformat(timespec="seconds")
         self.save(data)
 
@@ -276,6 +290,21 @@ class SessionIndex:
         novel_scenes = list((novel_dir / "scenes").glob("event_*/scene_*.json")) if novel_dir.exists() else []
         novel_event_chars = list((novel_dir / "global_information" / "characters" / "event_level").glob("event_*_characters.json")) if novel_dir.exists() else []
         novel_level_chars = list((novel_dir / "global_information" / "characters" / "novel_level").glob("novel_characters_after_event_*.json")) if novel_dir.exists() else []
+        manga_dir = root / "manga2video"
+        manga_scene_dirs = sorted(
+            (path for path in manga_dir.glob("scene_*") if path.is_dir()),
+            key=lambda p: (0, int(p.name.split("_")[-1])) if p.name.split("_")[-1].isdigit() else (1, p.name),
+        ) if manga_dir.exists() else []
+        manga_scene_storyboards = [path / "storyboard.json" for path in manga_scene_dirs]
+        manga_scene_camera_trees = [path / "camera_tree.json" for path in manga_scene_dirs]
+        manga_scene_shot_desc_groups = [list((scene / "shots").glob("*/shot_description.json")) for scene in manga_scene_dirs]
+        manga_ep_dirs = sorted((path for path in (manga_dir / "episodes").glob("ep_*") if path.is_dir()), key=lambda p: (0, int(p.name.split("_")[-1])) if p.name.split("_")[-1].isdigit() else (1, p.name)) if (manga_dir / "episodes").is_dir() else []
+        manga_ep_plans = [ep / "episode_plan.json" for ep in manga_ep_dirs]
+        manga_ep_scene_dirs = [sc for ep in manga_ep_dirs for sc in sorted((path for path in ep.glob("scene_*") if path.is_dir()), key=lambda p: (0, int(p.name.split("_")[-1])) if p.name.split("_")[-1].isdigit() else (1, p.name))]
+        manga_ep_storyboards = [sc / "storyboard.json" for sc in manga_ep_scene_dirs]
+        manga_ep_camera_trees = [sc / "camera_tree.json" for sc in manga_ep_scene_dirs]
+        manga_ep_shot_desc_groups = [list((sc / "shots").glob("*/shot_description.json")) for sc in manga_ep_scene_dirs]
+        manga_ep_final_videos = [ep / "final_video.mp4" for ep in manga_ep_dirs]
         return {
             "idea2video/story.txt": (idea_dir / "story.txt").exists(),
             "idea2video/characters.json": (idea_dir / "characters.json").exists(),
@@ -299,6 +328,19 @@ class SessionIndex:
             "novel2video/scenes/event_*/scene_*.json": bool(novel_scenes),
             "novel2video/global_information/characters/event_level/*.json": bool(novel_event_chars),
             "novel2video/global_information/characters/novel_level/*.json": bool(novel_level_chars),
+            "manga2video/comic_manifest.json": (manga_dir / "comic_manifest.json").exists(),
+            "manga2video/characters.json": (manga_dir / "characters.json").exists() or (manga_dir / "series_characters.json").exists(),
+            "manga2video/episode_plan.json": (manga_dir / "episode_plan.json").exists(),
+            "manga2video/scene_*/storyboard.json": bool(manga_scene_storyboards) and all(path.exists() for path in manga_scene_storyboards),
+            "manga2video/scene_*/camera_tree.json": bool(manga_scene_camera_trees) and all(path.exists() for path in manga_scene_camera_trees),
+            "manga2video/scene_*/shots/*/shot_description.json": bool(manga_scene_shot_desc_groups) and all(manga_scene_shot_desc_groups),
+            "manga2video/final_video.mp4": (manga_dir / "final_video.mp4").exists(),
+            "manga2video/series_manifest.json": (manga_dir / "series_manifest.json").exists(),
+            "manga2video/episodes/ep_*/episode_plan.json": bool(manga_ep_plans) and all(path.exists() for path in manga_ep_plans),
+            "manga2video/episodes/ep_*/scene_*/storyboard.json": bool(manga_ep_dirs) and bool(manga_ep_storyboards) and all(path.exists() for path in manga_ep_storyboards),
+            "manga2video/episodes/ep_*/scene_*/camera_tree.json": bool(manga_ep_dirs) and bool(manga_ep_camera_trees) and all(path.exists() for path in manga_ep_camera_trees),
+            "manga2video/episodes/ep_*/scene_*/shots/*/shot_description.json": bool(manga_ep_dirs) and bool(manga_ep_shot_desc_groups) and all(manga_ep_shot_desc_groups),
+            "manga2video/episodes/ep_*/final_video.mp4": bool(manga_ep_final_videos) and all(path.exists() for path in manga_ep_final_videos),
         }
 
     def memory_text(self) -> str:

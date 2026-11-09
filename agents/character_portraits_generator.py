@@ -28,7 +28,7 @@ Visual Style: {style}
 
 prompt_template_back = \
 """Generate a full-body, back-view portrait of character {identifier} seen from behind, with a pure solid white background, centered, empty hands and arms relaxed at sides. No facial features visible.
-CRITICAL CONSISTENCY: Must wear the EXACT same clothing, outfit colors, and hairstyle as the front view. Render ONLY this single character with NO props, NO pets, NO floating weapons, NO effects, and NO text.
+CRITICAL CONSISTENCY: Must wear the EXACT same clothing, outfit colors, and hairstyle as the front view, seen strictly from behind. Front-only accessories (such as a necktie, bowtie, front shirt placket, buttons, or chest badge) hang down the chest in front and are HIDDEN from behind — keep the upper back of a shirt/coat completely smooth and NEVER draw a necktie hanging down the back. Render ONLY this single character with NO props, NO pets, NO floating weapons, NO effects, and NO text.
 Character Features & Outfit: {features}
 Visual Style: {style}
 """
@@ -65,10 +65,18 @@ _QUADRUPED_MARKERS = (
     "chú mèo",
     "bé mèo",
     "dạng mèo",
+    "mèo xám",
+    "mèo hoang",
+    "mèo béo",
+    "mèo cam",
     "tabby cat",
     "fat cat",
     "chubby cat",
     "house cat",
+    "gray cat",
+    "grey cat",
+    "stray cat",
+    "experimental cat",
     "dog",
     "puppy",
     "wolf",
@@ -88,6 +96,9 @@ _HUMANOID_MARKERS = (
     "cô gái",
     "thiếu niên",
     "phụ nữ",
+    "tiến sĩ",
+    "nhà khoa học",
+    "dị nhân",
     "trench coat",
     "school uniform",
     "hooded",
@@ -117,17 +128,31 @@ class CharacterPortraitsGenerator:
         self,
         character: CharacterInScene,
         style: str,
+        reference_image_paths: Optional[List[str]] = None,
     ) -> ImageOutput:
         features = f"(static) {character.static_features or ''}; (dynamic) {character.dynamic_features or ''}"
         template = prompt_template_quadruped_front if _is_quadruped_character(character) else prompt_template_front
+        style_val = style or "Modern cinematic, crisp photorealistic details"
         prompt = template.format(
             identifier=character.identifier_in_scene,
             features=features,
-            style=style or "Modern cinematic, crisp photorealistic details",
+            style=style_val,
         )
-        image_output = await self.image_generator.generate_single_image(
-            prompt=prompt,
-        )
+        refs = [str(p).strip() for p in (reference_image_paths or []) if str(p).strip()][:4]
+        if refs:
+            prompt = (
+                f"{prompt.rstrip()}\n"
+                f"HYBRID COMIC-TO-ANIME REDRAW: Strictly match the character's exact facial structure, hair color/style, eye color, fur/tabby markings, and signature outfit from the attached reference image(s), while redrawing cleanly in `{style_val}` on a pure solid white background. "
+                "REMOVE all comic panel borders, speech bubbles, text letters, SFX, screentones, and extra background figures."
+            )
+            image_output = await self.image_generator.generate_single_image(
+                prompt=prompt,
+                reference_image_paths=refs,
+            )
+        else:
+            image_output = await self.image_generator.generate_single_image(
+                prompt=prompt,
+            )
         return image_output
 
     async def generate_side_portrait(
