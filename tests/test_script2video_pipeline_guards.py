@@ -267,7 +267,7 @@ class Script2VideoPipelineGuardTests(unittest.IsolatedAsyncioTestCase):
             await pipeline.generate_video_for_single_shot(shot)
 
         self.assertTrue(captured["suppress"])
-        self.assertIn("Off-screen Japanese Narrator Voiceover ONLY", captured["prompt"])
+        self.assertIn("Active Speaker: Narrator", captured["prompt"])
         self.assertNotIn("Vietsub:", captured["prompt"])
         self.assertNotIn("karaoke", captured["prompt"].lower())
         self.assertNotIn("speech bubbles", captured["prompt"].lower())

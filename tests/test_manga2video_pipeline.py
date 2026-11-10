@@ -559,7 +559,7 @@ class HybridRenderingGuardsTests(unittest.IsolatedAsyncioTestCase):
             pipeline.frame_events[0]["first_frame"].set()
             await pipeline.generate_video_for_single_shot(shot)
             self.assertEqual(len(seen_vid_prompts), 1)
-            self.assertIn("Off-screen Japanese Inner Monologue Voiceover of Kayden (Calm) ONLY (keep visible character lips closed)", seen_vid_prompts[0])
+            self.assertIn("Delivery Mode: Off-screen inner monologue voiceover", seen_vid_prompts[0])
 
 
 class Manga2VideoEndToEndAndAdapterTests(unittest.IsolatedAsyncioTestCase):
@@ -928,7 +928,7 @@ class Manga2VideoEndToEndAndAdapterTests(unittest.IsolatedAsyncioTestCase):
             ),
         ]
         resolved = _resolve_script_vietsubs(shots, raw_script)
-        self.assertEqual(resolved, {1: "Câu một chuẩn.", 2: "Câu hai chuẩn."})
+        self.assertEqual(resolved, {1: 'A: "Câu một chuẩn."', 2: 'B: "Câu hai chuẩn."'})
 
     def test_bind_storyboard_backfills_missing_vietsub_only_for_speech_shots(self):
         with tempfile.TemporaryDirectory() as tmp:

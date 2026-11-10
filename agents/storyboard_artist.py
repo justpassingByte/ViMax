@@ -68,9 +68,9 @@ The user will provide the following input.
   - When a character is shopping, walking, or doing a solo activity, keep focus strictly on that character. Do NOT add extraneous generic shop clerks or clones that could be confused with main characters.
 - Anime World-Building, Environmental Visuals & Cinematic Breathing Room (Beyond 1:1 Motion Comics):
   - NEVER simply convert comic panels 1:1 into literal motion shots. That produces a boring, flat motion comic! A true high-budget anime adaptation (e.g. Ufotable, MAPPA, Bones) enriches the story with cinematic atmosphere:
-    * **Atmospheric Cityscapes & Environmental B-Roll**:
-      - Interleave character moments with rich environmental visuals: sweeping sunset city skylines, golden light reflecting on skyscraper glass, power lines against twilight skies, distant traffic hum with glowing red taillights, wind blowing through autumn trees, puddles reflecting streetlamps in quiet alleyways.
-      - Use these world-building shots between dialogue and action to establish geography, build suspense, and give the world scale and depth.
+    * **Context-Grounded Environmental Breathing ("Ma")**:
+      - When manga panels indicate spatial/temporal transitions or quiet establishing moments (empty scenery panels, landscape vistas, chapter gutters), enrich them with environmental B-roll strictly faithful to the scene's actual setting and atmosphere (e.g. rain dripping from stone eaves in a storm, subtle steam rising from machinery, or quiet streetlights in a night passage).
+      - NEVER invent generic sunset or autumn cliches when they contradict the literal scene location, weather, and time of day.
     * **Flashbacks & Memory Treatment (Hồi tưởng & Ký ức)**:
       - Whenever a scene delves into a past memory or inner reflection, tag `[AnimeFX: Flashback]` (applies nostalgic sepia/monochrome color grading, soft dreamy bloom, and gentle edge vignette).
       - Use `transition_in="white_flash"` for sudden memory awakenings or `"crossfade"` for gentle emotional dissolves.
@@ -101,10 +101,10 @@ The user will provide the following input.
     * **Dutch Angle / Slanted Tilt**: Used when the vehicle/hazard hurtles toward the screen, tilting the horizon to induce disorientation and impending danger.
     * **Overhead Aftermath & Wide Safe Zone**: Cutting to a top-down view showing the hazard skidding across the EMPTY road, and a tight corner sidewalk view showing safe touchdown.
 - Art Style Presets by Scene Mood (Điều phối phong cách mỹ thuật theo cảm xúc):
-  - **Shinkai / Kyoto Animation Preset (Breathing / Walking / City Atmosphere)**:
-    For peaceful transitions, neighborhood walks, and environmental atmosphere, describe: *Makoto Shinkai / KyoAni aesthetic, warm amber sunset glow, glass reflections on storefronts, purple-orange dusk sky, power lines, soft detailed background painting*.
-  - **Ufotable / MAPPA Sakuga Preset (Action / Superhuman Combat)**:
-    For battles, super-speed dashes, and awakening moments, describe: *Ufotable / MAPPA sakuga action style, sharp crisp cel shading, high contrast, luminous rim lighting, dynamic motion blur*.
+  - **Atmospheric / Contemplative Preset (Quiet / Emotional / Transition Beats)**:
+    For peaceful transitions and environmental atmosphere, describe: *Rich painterly background art, nuanced environmental lighting matching the literal time of day and weather, subtle atmospheric particle physics, soft filmic depth of field*.
+  - **High-Impact Sakuga Preset (Action / Kinetic Combat)**:
+    For battles, speed bursts, and awakening moments, describe: *High-budget Sakuga action style, sharp crisp cel shading, high contrast, luminous rim lighting, dynamic motion blur*.
 - Anime Visual Effects & High-Speed Action Staging (Sakuga VFX):
   - **Canon Power & Attribute Integrity**:
     * Strictly obey the powers, elements, and physical limitations documented in the character roster. Do NOT invent foreign magical effects, auras, or energy types not belonging to the character.

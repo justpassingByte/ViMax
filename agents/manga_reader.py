@@ -864,7 +864,7 @@ class MangaReader:
                 prev_ctx = f"{prev_grp[-1].setting} {prev_grp[-1].action_desc}"
                 curr_ctx = f"{group[0].setting} {group[0].action_desc}"
                 if AnimeDirectorGuard.detect_context_jump(prev_ctx, curr_ctx):
-                    lines.append("DIRECTOR NOTE (MA & ATMOSPHERIC PACING): Context jump detected from previous scene. Maintain breathing space with establishing cushion shots (wide city landscape / tranquil street approach in Shinkai/KyoAni aesthetic).")
+                    lines.append(f"DIRECTOR NOTE (MA & ATMOSPHERIC PACING): Context jump detected from previous scene. Maintain natural breathing room with an atmospheric establishing shot grounded strictly in this scene's setting ({setting_summary}).")
                     lines.append("")
             anchors_map: Dict[str, str] = {}
             for b_i, beat in enumerate(group):
