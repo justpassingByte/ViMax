@@ -127,11 +127,20 @@ class AnimeDirectorGuard:
         prev_l = (prev_desc or "").lower()
         curr_l = (curr_desc or "").lower()
 
-        sky_kws = ["sky", "clouds", "cloudy", "rooftops", "high-angle establishing", "high altitude", "bầu trời", "trên trời", "trên không"]
+        # Clean prior synthetic bridge prefixes so we test genuine scene context
+        prev_clean = re.sub(r"^(?:dynamic camera tilt-down tracking descent[^\:]*:\s*)+", "", prev_l)
+        curr_clean = re.sub(r"^(?:dynamic camera tilt-down tracking descent[^\:]*:\s*)+", "", curr_l)
+
+        sky_kws = ["sky", "clouds", "cloudy", "rooftops", "high-angle establishing", "bầu trời", "trên trời", "trên không"]
         ground_kws = ["alley", "ground", "asphalt", "pavement", "kneeling", "hẻm", "mặt đất", "quỳ", "street level", "sidewalk", "cobblestone"]
 
-        was_sky = any(kw in prev_l for kw in sky_kws)
-        now_ground = any(kw in curr_l for kw in ground_kws)
+        was_sky = any(kw in prev_clean for kw in sky_kws)
+        now_ground = any(kw in curr_clean for kw in ground_kws)
+
+        # If previous shot was already at ground level, do not trigger altitude descent again!
+        if any(kw in prev_clean for kw in ground_kws):
+            was_sky = False
+
         has_descent_already = any(kw in curr_l for kw in ["descent", "tilt-down", "swoop", "downward", "hạ độ cao"])
 
         return was_sky and now_ground and not has_descent_already

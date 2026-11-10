@@ -137,6 +137,7 @@ def test_dialogue_duration_protection():
 
 def test_altitude_descent_bridge_in_storyboard():
     # Storyboard with sky shot followed by ground shot should inject camera descent bridge
+    # but subsequent ground shots MUST NOT inherit the descent prefix!
     shots = [
         ShotBriefDescription(
             idx=0,
@@ -152,13 +153,22 @@ def test_altitude_descent_bridge_in_storyboard():
             visual_desc="Wounded warrior kneeling in dark alley against cracked stone wall.",
             audio_desc="[Sound Effect] Rain drops.",
         ),
+        ShotBriefDescription(
+            idx=2,
+            is_last=True,
+            cam_idx=2,
+            visual_desc="Extreme close-up side profile of the warrior gasping for air.",
+            audio_desc="[Speaker] Warrior: 'Haa...'",
+        ),
     ]
 
     corrected = AnimeDirectorGuard.lint_and_auto_correct_storyboard(shots)
 
-    assert len(corrected) == 2
+    assert len(corrected) == 3
     assert "tilt-down tracking shot" in corrected[0].visual_desc
     assert "Dynamic camera tilt-down tracking descent continuing rapidly" in corrected[1].visual_desc
+    # Crucial: Shot 2 is already at ground level and must NOT cascade the descent prefix
+    assert "Dynamic camera tilt-down tracking descent" not in corrected[2].visual_desc
 
 
 def test_shot_description_scrubbing():
