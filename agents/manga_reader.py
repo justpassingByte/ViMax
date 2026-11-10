@@ -49,6 +49,10 @@ Inspect the attached sequential comic page images carefully and extract a strict
    - Set `page_idx` to the exact integer page number shown in `[Page N]` where the character or panel appears.
    - Set `crop_box_norm` to `[ymin, xmin, ymax, xmax]` in integer coordinates `0..1000` tightly framing that panel (for beats) or that character's clean face/upper-body/full-body (for character observations, avoiding overlapping speech bubbles when possible).
 7. SCENE BREAKS: Set `is_scene_break: true` ONLY when location, time of day, or continuity cleanly switches to a new scene at that beat.
+8. CINEMATIC CAMERA COMPOSITION & PERSPECTIVE DYNAMICS:
+   - Capture the author's exact cinematic framing drawn in the panels: camera angles (extreme tilted Dutch angle, ground-level worm's eye looking diagonally up at walls/buildings, high overhead bird's eye, swooping rooftop tracking shots, extreme close-up on eyes).
+   - Record dynamic perspective, spatial depth, velocity lines, and environmental shockwaves rather than flattening into generic eye-level descriptions!
+   - In high-altitude descents or crash landings, extract the exact multi-panel sequence (high sky streak -> low rooftop swoop -> impact ground explosion -> Dutch-angle pained recovery).
 
 [Output Format]
 Return ONLY valid JSON matching:

@@ -32,7 +32,8 @@ DUPLICATE_VICTIM_PATTERNS = [
 SUPERHUMAN_SPEED_TRIGGERS = [
     "super-speed", "superspeed", "superhuman speed", "awakened", "lightning speed",
     "shunpo", "soru", "flash step", "teleport", "vanish", "blitz", "dash", "vụt qua",
-    "siêu tốc", "tốc biến", "lướt đi", "biến mất", "cứu thoát", "né đòn"
+    "siêu tốc", "tốc biến", "lướt đi", "biến mất", "cứu thoát", "né đòn",
+    "touchdown", "tiếp đất", "aftermath", "rescue", "giải cứu"
 ]
 
 
@@ -130,7 +131,12 @@ class AnimeDirectorGuard:
                     vis = f"{vis} [AnimeFX: SpeedLines] [AnimeFX: ScreenShake]"
                 dur = 2.5
             elif any(kw in vis.lower() for kw in ["touchdown", "aftermath", "cradling", "safe", "tiếp đất"]):
-                # Pha 4: Touchdown & Aftermath
+                # Pha 4 & 5: Kinetic Deceleration & Momentum Dissipation (Ban flat static 1:1 comic poses)
+                if not any(kw in vis.lower() for kw in ["friction", "slide", "skid", "trượt", "ma sát", "sóng xung kích"]):
+                    if "kneel" in vis.lower() or "quỳ" in vis.lower():
+                        vis = f"Kinetic deceleration friction: Sneakers slide hard across pavement tiles kicking up dust and friction smoke, body pivoting to shield the victim as sonic wind shockwave ripples across the sidewalk, before settling into breathless relief: {vis}"
+                        if "[AnimeFX: ActionBurst]" not in vis:
+                            vis = f"{vis} [AnimeFX: ActionBurst]"
                 dur = None  # Full duration for relief dialogue!
 
         # 4. Dramatic Camera Mapping (Enforce cinematic angles, ban eye-level monotony)

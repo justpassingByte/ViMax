@@ -110,6 +110,29 @@ def test_dramatic_camera_mapping():
     assert "Extreme close-up on eyes" in corrected.visual_desc
 
 
+def test_kinetic_touchdown_enhancement():
+    # Anti-pattern: static flat landing copied 1:1 from comic
+    static_touchdown_shot = ShotBriefDescription(
+        idx=7,
+        is_last=False,
+        cam_idx=1,
+        visual_desc="Touchdown and safe aftermath: Jiwoo already kneeling safely on the sidewalk holding Hojin.",
+        audio_desc="[Speaker] Seo Jiwoo: 'Daijoubu?'",
+        target_duration_sec=None,
+    )
+
+    corrected = AnimeDirectorGuard.lint_and_auto_correct_shot_brief(
+        shot=static_touchdown_shot,
+        shot_idx=7,
+        total_shots=9,
+    )
+
+    # Must inject kinetic deceleration friction & momentum dissipation
+    assert "Kinetic deceleration friction" in corrected.visual_desc
+    assert "Sneakers slide hard" in corrected.visual_desc
+    assert "[AnimeFX: ActionBurst]" in corrected.visual_desc
+
+
 def test_dialogue_duration_protection():
     # Shot with dialogue should never have target_duration_sec shortened below spoken speech window
     dialogue_shot = ShotBriefDescription(

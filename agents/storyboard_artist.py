@@ -75,6 +75,20 @@ The user will provide the following input.
       - For climactic combat standoffs or life-or-death confrontations, tag `[AnimeFX: Letterbox]` for 2.39:1 widescreen cinema bars.
     * **Cinematic Breathing Room & Full Pacing**:
       - Let establishing shots and character dialogues play with full breathing room (~6.0–8.0 seconds). NEVER compress shots into frantic 2-second fragments that discard dialogue tails or atmospheric pauses.
+- Anime Adaptation & Kinetic Deceleration (Chuyển thể Điện ảnh hóa Động lực học & Tuyệt đối CẤM Tiếp đất Tĩnh 1:1):
+  - NEVER copy static 2D manhwa landing poses directly (e.g. cutting abruptly to a character already sitting/kneeling on the ground). That produces a lifeless, cheap motion comic!
+  - In high-budget Sakuga anime (Ufotable, MAPPA, Wit Studio), every arrival, landing, or crash is an active sequence of KINETIC MOMENTUM DISSIPATION:
+    * **High-Altitude Descents & Crash Landings (Giáng thế & Va chạm tiếp đất)**:
+      Must ALWAYS be directed across a multi-cut descending camera bridge:
+      1. *High Sky Descent*: Distant blazing streak tearing across clouds from high altitude.
+      2. *Swooping Tracking Cut*: Dynamic camera rapidly swooping low over rooftops, tracking the trajectory diving toward the destination.
+      3. *Impact Flash & Ground Shockwave*: Extreme low ground-level / worm's-eye Dutch angle on wet asphalt/earth: Blinding impact explosion, sparks/debris blasting outward, steam and shockwave rippling across walls.
+      4. *Kinetic Friction Skid & Recovery*: Tilted Dutch wide/medium shot from behind: The character slides on boots/knees along the pavement dissipating immense momentum, one trembling hand clawing the wall/ground for support, residual energy/steam fizzling out, ragged breathing.
+      5. *Pained / Exhausted Monologue*: Dramatic Dutch close-up on gritted teeth, dripping sweat/blood scuffs, hand trembling on wall.
+    * **Superhuman Speed Rescue Deceleration (Tiếp đất & Giảm tốc sau Cứu thoát)**:
+      1. *Sneaker Friction Skid Cut*: Low-angle shot along sidewalk tiles: Character's sneakers slide hard across pavement tiles kicking up dust and friction smoke, loose tie and school backpack whipping forward from intense inertia!
+      2. *Protective Pivot & Wind Shockwave*: Rescuer spins their torso around to shield the child with their own back, sonic wind displacement swirling dust and fluttering bystanders' coats!
+      3. *Gentle Knee Drop & Breathless Relief*: Only after momentum is fully dissipated does the hero drop to one knee, trembling hands checking the child's shoulders as breathless adrenaline fades.
 - Dramatic Camera Mapping & Angle Pacing (Quy chuẩn góc máy điện ảnh bắt buộc):
   - NEVER repeat eye-level medium shots consecutively. Vary camera heights and angles dynamically to guide audience emotions:
     * **Extreme Close-Up on Eyes**: Used at the moment of sudden horror, panic, or awakened realization (e.g. pupils shrinking, light reflection, sweat bead on temple).
@@ -97,7 +111,8 @@ The user will provide the following input.
       1. **Pha 1 (Instinctive Push-off / Sudden Spring)**: Sudden adrenaline reflex, shoe rubber kicking off the asphalt, sudden shockwave burst of wind blowing dust and hair (`[AnimeFX: ActionBurst]`). Duration: ~1.8s.
       2. **Pha 2 (Frame Skip & Speed Streak)**: Tag `[AnimeFX: FrameSkip]` + `[AnimeFX: SpeedStreak]` (or `[AnimeFX: Vanish]`). The screen blurs into directional sonic air blur and clear wind streaks (`vệt tốc độ / vệt áp lực gió`), and the subjects vanish in a single frame. Duration: ~1.5s.
       3. **Pha 3 (Empty Impact / Near-Miss Momentum)**: Tag `[AnimeFX: SpeedLines]` + `[AnimeFX: ScreenShake]`. The vehicle violently screeches past the completely EMPTY danger zone with smoking skid marks. Duration: ~2.5s.
-      4. **Pha 4 (Touchdown & Safe Aftermath)**: Cut directly to the characters ALREADY kneeling safely on the sidewalk/ground, holding the victim tight as wind and dust settle. Duration: full ~6.0s–8.0s for relief dialogue.
+      4. **Pha 4 (Kinetic Sidewalk Friction Skid & Protective Shield)**: Tag `[AnimeFX: ActionBurst]`. Low-angle shot along pavement tiles: rescuer's sneakers slide hard creating friction dust, torso spinning to shield the child with their back as sonic wind shockwave ripples across the sidewalk! Duration: ~1.8s.
+      5. **Pha 5 (Relief Touchdown & Gentle Check)**: Dropping to one knee on the sunlit sidewalk, hands checking the dazed child in breathless relief as bystanders stare. Duration: full ~6.0s–8.0s for dialogue.
     * Clash / Sonic Boom: Tag `[AnimeFX: Impact]` (sakuga monochrome flash) + `[AnimeFX: ScreenShake]`.
     * Critical Tension: Tag `[AnimeFX: SlowMo]` (bullet-time dilation) before explosive action snaps.
 - Dialogue Attribution & Lip-Sync Integrity:
