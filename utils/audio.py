@@ -191,6 +191,15 @@ def resolve_voice_for_speaker(
             if name.strip().lower() == speaker.lower() and v_id:
                 return v_id.strip()
 
+    # 1b. Specific Anime / Eleceed character voice mapping for authentic Japanese audio
+    spk_low = (speaker or "").strip().lower()
+    if "jiwoo" in spk_low:
+        return "ja-JP-KeitaNeural" if provider == "edge-tts" else DEFAULT_MALE_VOICE_ELEVENLABS
+    if "hojin" in spk_low:
+        return "ja-JP-NanamiNeural" if provider == "edge-tts" else DEFAULT_FEMALE_VOICE_ELEVENLABS
+    if "kayden" in spk_low:
+        return "ja-JP-DaichiNeural" if provider == "edge-tts" else DEFAULT_MALE_VOICE_ELEVENLABS
+
     # 2. Check character description/gender from characters metadata
     is_female = False
     is_male = False
@@ -245,6 +254,12 @@ def resolve_voice_and_prosody(
     spk_lower = (speaker or "").strip().lower()
     voice = resolve_voice_for_speaker(speaker, characters, provider, default_voice, character_voices)
 
+    if "jiwoo" in spk_lower:
+        return "ja-JP-KeitaNeural", "+3%", "+0Hz"
+    if "hojin" in spk_lower:
+        return "ja-JP-NanamiNeural", "+8%", "+10Hz"
+    if "kayden" in spk_lower:
+        return "ja-JP-DaichiNeural", "-5%", "-5Hz"
     if any(kw in spk_lower for kw in ["sếp", "sep", "boss", "manager", "quản lý"]):
         return voice, "-5%", "-5Hz"
     if any(kw in spk_lower for kw in ["huy", "dev", "coder", "developer"]):

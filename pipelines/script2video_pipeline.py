@@ -695,6 +695,8 @@ class Script2VideoPipeline:
             user_requirement=user_requirement,
             quiet=quiet,
         )
+        from agents.anime_director_guard import AnimeDirectorGuard
+        storyboard = AnimeDirectorGuard.lint_and_auto_correct_storyboard(storyboard, characters=characters)
         _emit_render_progress(progress, "storyboard_ready", "Storyboard ready", {"shot_count": len(storyboard)})
 
         # decompose visual descriptions of shots
@@ -704,6 +706,7 @@ class Script2VideoPipeline:
             characters=characters,
             quiet=quiet,
         )
+        shot_descriptions = [AnimeDirectorGuard.lint_and_auto_correct_shot_description(sd, characters=characters) for sd in shot_descriptions]
         _emit_render_progress(progress, "shot_descriptions_ready", "Shot descriptions ready", {"shot_count": len(shot_descriptions)})
 
         # construct camera tree

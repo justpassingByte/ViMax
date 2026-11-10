@@ -10,6 +10,7 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Literal
 
 from moviepy import VideoFileClip
 
+from agents.anime_director_guard import AnimeDirectorGuard
 from agents.manga_reader import MangaReader
 from interfaces import (
     Camera,
@@ -463,6 +464,9 @@ class Manga2VideoPipeline:
                 clean_storyboard = storyboard
             else:
                 clean_storyboard, _ = bind_storyboard_to_panel_anchors(storyboard, scene_beats, scene_dir)
+            clean_storyboard = AnimeDirectorGuard.lint_and_auto_correct_storyboard(
+                clean_storyboard, characters=characters
+            )
             script_pipe.shot_desc_events = {sb.idx: asyncio.Event() for sb in clean_storyboard}
 
             _emit_progress(sc_prog, "decompose_shots", f"Decomposing shot visuals for scene {sc_idx}", {"shot_count": len(clean_storyboard)})
@@ -471,16 +475,17 @@ class Manga2VideoPipeline:
                 characters=characters,
                 quiet=quiet,
             )
-            # Guard: ensure no stale cached shot_description.json ever retains [RefBeat: ...]
+            # Guard: ensure no stale cached shot_description.json retains [RefBeat: ...] and conforms to Sakuga grammar
             cleaned_descs: List[ShotDescription] = []
             for sd in shot_descriptions:
                 new_vis, t1 = _clean_refbeat_tags(sd.visual_desc)
                 new_aud, t2 = _clean_refbeat_tags(sd.audio_desc)
                 if t1 or t2:
                     sd = sd.model_copy(update={"visual_desc": new_vis, "audio_desc": new_aud})
-                    shot_file = scene_dir / "shots" / f"{sd.idx}" / "shot_description.json"
-                    if shot_file.is_file():
-                        shot_file.write_text(json.dumps(sd.model_dump(), ensure_ascii=False, indent=2), encoding="utf-8")
+                sd = AnimeDirectorGuard.lint_and_auto_correct_shot_description(sd, characters=characters)
+                shot_file = scene_dir / "shots" / f"{sd.idx}" / "shot_description.json"
+                if shot_file.is_file():
+                    shot_file.write_text(json.dumps(sd.model_dump(), ensure_ascii=False, indent=2), encoding="utf-8")
                 cleaned_descs.append(sd)
 
             camera_tree: Optional[List[Camera]] = None

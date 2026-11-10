@@ -75,14 +75,26 @@ The user will provide the following input.
       - For climactic combat standoffs or life-or-death confrontations, tag `[AnimeFX: Letterbox]` for 2.39:1 widescreen cinema bars.
     * **Cinematic Breathing Room & Full Pacing**:
       - Let establishing shots and character dialogues play with full breathing room (~6.0–8.0 seconds). NEVER compress shots into frantic 2-second fragments that discard dialogue tails or atmospheric pauses.
+- Dramatic Camera Mapping & Angle Pacing (Quy chuẩn góc máy điện ảnh bắt buộc):
+  - NEVER repeat eye-level medium shots consecutively. Vary camera heights and angles dynamically to guide audience emotions:
+    * **Extreme Close-Up on Eyes**: Used at the moment of sudden horror, panic, or awakened realization (e.g. pupils shrinking, light reflection, sweat bead on temple).
+    * **High Overhead Angle / Bird's Eye**: Used to frame a solitary helpless victim on the ground/street, emphasizing vulnerability and scale before the looming hazard.
+    * **Dynamic Low-Angle 3/4 Perspective**: Looking up from asphalt at sidewalk curb to frame the protagonist dropping into a coiled sprinter launch stance, making them look powerful and heroic.
+    * **Dutch Angle / Slanted Tilt**: Used when the vehicle/hazard hurtles toward the screen, tilting the horizon to induce disorientation and impending danger.
+    * **Overhead Aftermath & Wide Safe Zone**: Cutting to a top-down view showing the hazard skidding across the EMPTY road, and a tight corner sidewalk view showing safe touchdown.
+- Art Style Presets by Scene Mood (Điều phối phong cách mỹ thuật theo cảm xúc):
+  - **Shinkai / Kyoto Animation Preset (Breathing / Walking / City Atmosphere)**:
+    For peaceful transitions, neighborhood walks, and environmental atmosphere, describe: *Makoto Shinkai / KyoAni aesthetic, warm amber sunset glow, glass reflections on storefronts, purple-orange dusk sky, power lines, soft detailed background painting*.
+  - **Ufotable / MAPPA Sakuga Preset (Action / Superhuman Combat)**:
+    For battles, super-speed dashes, and awakening moments, describe: *Ufotable / MAPPA sakuga action style, sharp crisp cel shading, high contrast, blazing electric energy particle aura, luminous rim lighting*.
 - Anime Visual Effects & High-Speed Action Staging (Sakuga VFX):
   - Anime Frame Skip & Visual Ellipsis (Tỉnh lược khung hình):
     * NEVER attempt to realistically simulate complex contact physics (lifting a person while running, mid-stride scooping, clumsy grappling) in video prompts — diffusion models will warp limbs, produce multiple arms, and create awkward slow-motion jogging.
-    * Instead, direct authentic Japanese anime action shorthand (Frame Skip / Ellipsis):
-      1. Anticipation & Ignition: Coiled launch pose, sparking eyes/aura, sudden tension.
-      2. Frame Skip & Speed Streak: Tag `[AnimeFX: FrameSkip]` + `[AnimeFX: SpeedStreak]` (or `[AnimeFX: Vanish]`). The screen blurs into directional energy streaks and residual lightning/smoke (`vệt tốc độ / vệt hiệu ứng`), and the subjects vanish or cut past in a blinding flash.
-      3. Reaction / Impact: Tag `[AnimeFX: SpeedLines]` + `[AnimeFX: ScreenShake]`. The vehicle/hazard violently screeches past the EMPTY danger zone.
-      4. Touchdown / Resolution: Cut directly to the characters ALREADY kneeling safely on the sidewalk/ground, holding the victim tight as residual sparks fade out.
+    * Instead, direct authentic Japanese anime action shorthand (4-Phase Sakuga Grammar):
+      1. **Pha 1 (Anticipation / Power Coiling)**: Coiled launch pose, sparking eyes/aura, sudden tension (`[AnimeFX: ActionBurst]`). Duration: ~3.5s.
+      2. **Pha 2 (Frame Skip & Speed Streak)**: Tag `[AnimeFX: FrameSkip]` + `[AnimeFX: SpeedStreak]` (or `[AnimeFX: Vanish]`). The screen blurs into directional energy streaks and residual lightning/smoke (`vệt tốc độ / vệt hiệu ứng`), and the subjects vanish in a single frame. Duration: ~2.5s.
+      3. **Pha 3 (Empty Impact / Near-Miss Momentum)**: Tag `[AnimeFX: SpeedLines]` + `[AnimeFX: ScreenShake]`. The vehicle/hazard violently screeches past the completely EMPTY danger zone with smoking skid marks. Duration: ~4.0s.
+      4. **Pha 4 (Touchdown & Safe Aftermath)**: Cut directly to the characters ALREADY kneeling safely on the sidewalk/ground, holding the victim tight as residual sparks fade out. Duration: full ~6.0s–8.0s for relief dialogue.
     * Clash / Sonic Boom: Tag `[AnimeFX: Impact]` (sakuga monochrome flash) + `[AnimeFX: ScreenShake]`.
     * Critical Tension: Tag `[AnimeFX: SlowMo]` (bullet-time dilation) before explosive action snaps.
 - Dialogue Attribution & Lip-Sync Integrity:
