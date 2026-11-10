@@ -1480,15 +1480,28 @@ class Script2VideoPipeline:
                 "reference_image_paths": frame_paths,
                 "progress": _scoped_progress(progress, shot_idx=shot_description.idx, artifact="video_clip"),
             }
+            target_dur = getattr(shot_description, "target_duration_sec", None)
+            if target_dur is not None:
+                try:
+                    dur_val = float(target_dur)
+                    if dur_val > 0:
+                        gen_kwargs["duration"] = dur_val
+                except (ValueError, TypeError):
+                    pass
             try:
                 sig = inspect.signature(self.video_generator.generate_single_video)
                 params = sig.parameters
                 if "suppress_on_screen_subtitles" in params or any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values()):
                     gen_kwargs["suppress_on_screen_subtitles"] = suppress_subs
+                if "duration" in params or any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values()):
+                    if target_dur is not None:
+                        gen_kwargs["duration"] = target_dur
             except (TypeError, ValueError):
                 pass
             video_output = await self.video_generator.generate_single_video(**gen_kwargs)
             video_output.save(video_path)
+            from utils.video import conform_shot_video_duration
+            conform_shot_video_duration(video_path, shot_description)
             print(f"☑️ Generated video for shot {shot_description.idx}, saved to {video_path}.")
             _emit_render_progress(progress, "video_clip_done", f"Generated video clip for shot {shot_description.idx}", {"shot_idx": shot_description.idx, "path": video_path})
 

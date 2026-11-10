@@ -145,7 +145,14 @@ class VideoGeneratorOpenRouterAPI:
         request_timeout_seconds = _env_float("VIMAX_VIDEO_REQUEST_TIMEOUT_SECONDS", 60.0)
         query_timeout_seconds = _env_float("VIMAX_VIDEO_QUERY_TIMEOUT_SECONDS", 600.0)
         poll_interval_seconds = _env_float("VIMAX_VIDEO_POLL_INTERVAL_SECONDS", 10.0)
-        duration = _env_int("VIMAX_OPENROUTER_VIDEO_DURATION", 8)
+        duration = kwargs.get("duration")
+        if duration is None:
+            duration = _env_int("VIMAX_OPENROUTER_VIDEO_DURATION", 8)
+        else:
+            try:
+                duration = max(2, min(10, int(round(float(duration)))))
+            except (ValueError, TypeError):
+                duration = _env_int("VIMAX_OPENROUTER_VIDEO_DURATION", 8)
         resolution = os.environ.get("VIMAX_OPENROUTER_VIDEO_RESOLUTION", "720p")
         generate_audio = _env_bool("VIMAX_OPENROUTER_GENERATE_AUDIO", True)
         suppress_subtitles = kwargs.get("suppress_on_screen_subtitles")

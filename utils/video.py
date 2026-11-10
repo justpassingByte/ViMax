@@ -120,6 +120,43 @@ def resolve_anime_shot_pacing(sd: Any, raw_dur: float = 8.0) -> float:
         return 7.5
 
 
+def conform_shot_video_duration(video_path: str, sd: Any) -> None:
+    """Ensure a generated shot video on disk conforms to the calibrated anime target duration.
+    Speeds up action shots (speed streaks, impact, dashes) so they play at authentic Sakuga tempo,
+    or trims over-long non-dialogue clips, so the file on disk is never stuck at a sluggish 8.0s."""
+    if not os.path.exists(video_path):
+        return
+    raw_clip = None
+    paced_clip = None
+    tmp_path = f"{video_path}.paced.mp4"
+    try:
+        raw_clip = VideoFileClip(video_path)
+        raw_dur = float(getattr(raw_clip, "duration", None) or 0.0)
+        if raw_dur <= 0.5:
+            return
+        target_dur = resolve_anime_shot_pacing(sd, raw_dur=raw_dur)
+        if abs(raw_dur - target_dur) < 0.2:
+            return
+        aud = str(getattr(sd, "audio_desc", "") or "")
+        has_dialogue = bool(re.search(r"\[(?:Speaker|Thought|Inner\s*Monologue)\]", aud, re.IGNORECASE))
+        if target_dur < raw_dur:
+            if not has_dialogue:
+                speed_factor = max(1.0, min(8.0, raw_dur / target_dur))
+                paced_clip = raw_clip.with_effects([vfx.MultiplySpeed(speed_factor)])
+            else:
+                paced_clip = raw_clip.subclipped(0, min(target_dur, raw_dur))
+            paced_clip.write_videofile(tmp_path, codec="libx264", audio_codec="aac", preset="ultrafast", logger=None)
+    except Exception as e:
+        logging.warning(f"Could not conform shot duration for {video_path}: {e}")
+    finally:
+        if raw_clip is not None:
+            raw_clip.close()
+        if paced_clip is not None:
+            paced_clip.close()
+    if os.path.exists(tmp_path):
+        os.replace(tmp_path, video_path)
+
+
 def resolve_and_apply_anime_fx(clip: Any, sd: Any, extra_clips: Optional[List[Any]] = None) -> Any:
     """Inspect shot description for anime visual effects tags and apply them in sequence.
 
