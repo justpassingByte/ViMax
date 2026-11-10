@@ -53,6 +53,11 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Optional episode subset in series mode, e.g. '1-3' or '2'.",
     )
     parser.add_argument(
+        "--scene-range",
+        default=None,
+        help="Optional scene subset in episode mode, e.g. '0' or '0-2'.",
+    )
+    parser.add_argument(
         "--style",
         default=DEFAULT_ANIME_STYLE,
         help="Target anime visual style prompt.",
@@ -214,6 +219,7 @@ async def run_manga2video_cli(argv: Sequence[str] | None = None) -> dict[str, An
                 user_requirement=args.user_requirement,
                 stop_after=args.stop_after,
                 episode_range=args.episode_range,
+                scene_range=args.scene_range,
                 resume=not args.no_resume,
                 progress=progress,
                 quiet=args.jsonl,
@@ -256,6 +262,7 @@ async def run_manga2video_cli(argv: Sequence[str] | None = None) -> dict[str, An
             style=ep_plan.style or args.style,
             user_requirement=args.user_requirement,
             stop_after=args.stop_after,
+            scene_range=args.scene_range,
             progress=progress,
             quiet=args.jsonl,
         )

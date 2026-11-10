@@ -525,6 +525,7 @@ class Manga2VideoPipeline:
         user_requirement: str = "",
         stop_after: Literal["portraits", "frames", "full"] = "full",
         character_portraits_registry: Optional[Dict[str, Dict[str, Dict[str, str]]]] = None,
+        scene_range: str | int | Sequence[int] | None = None,
         progress: Callable[[str, str, Dict[str, Any] | None], None] | None = None,
         quiet: bool = False,
     ) -> Any:
@@ -594,9 +595,12 @@ class Manga2VideoPipeline:
         all_frames: List[str] = []
         scene_videos: List[str] = []
         scene_dirs: List[Path] = []
+        selected_scenes = parse_chapter_range(scene_range) if scene_range is not None else None
 
         for scene_meta in plan.scenes:
             sc_idx = scene_meta.scene_idx
+            if selected_scenes is not None and sc_idx not in selected_scenes:
+                continue
             scene_dir = work_root / f"scene_{sc_idx}"
             scene_dirs.append(scene_dir)
             scene_script = (scene_dir / "script.txt").read_text(encoding="utf-8")
@@ -626,6 +630,9 @@ class Manga2VideoPipeline:
 
         if stop_after == "frames":
             return all_frames
+
+        if selected_scenes is not None and len(selected_scenes) < len(plan.scenes):
+            return scene_videos[0] if len(scene_videos) == 1 else scene_videos
 
         # 3. Concatenate all scene videos cleanly + write combined episode .srt/.ass sidecars
         final_video_path = work_root / "final_video.mp4"
@@ -925,6 +932,7 @@ class Manga2VideoPipeline:
         user_requirement: str = "",
         stop_after: Literal["portraits", "frames", "full"] = "full",
         episode_range: str | int | Sequence[int] | None = None,
+        scene_range: str | int | Sequence[int] | None = None,
         resume: bool = True,
         progress: Callable[[str, str, Dict[str, Any] | None], None] | None = None,
         quiet: bool = False,
@@ -1090,6 +1098,7 @@ class Manga2VideoPipeline:
                     user_requirement=user_requirement,
                     stop_after=stop_after,
                     character_portraits_registry=shared_registry,
+                    scene_range=scene_range,
                     progress=progress,
                     quiet=quiet,
                 )
