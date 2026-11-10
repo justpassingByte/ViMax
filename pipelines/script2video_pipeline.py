@@ -1445,7 +1445,7 @@ class Script2VideoPipeline:
             )
             has_spoken_audio = bool(re.search(r"\[(?:Speaker|Thought|Inner\s*Monologue)\]", clean_audio_desc, re.IGNORECASE))
             timing_note = (
-                "\n(Spoken Delivery Pacing: start speaking promptly near 0.4s and complete every word cleanly before ~6.5s so zero dialogue gets cut off before the 8s boundary.)"
+                "\n(Spoken Delivery Pacing: start speaking promptly near 0.3s and complete every word cleanly with natural phrasing before the shot ends.)"
                 if has_spoken_audio
                 else ""
             )

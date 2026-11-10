@@ -43,7 +43,7 @@ Inspect the attached sequential comic page images carefully and extract a strict
    - Use `previous_tail_summary` ONLY to recognize a half-bubble continuing from the end of the previous batch — do NOT re-emit already completed beats from earlier pages!
    - Stitch any bubble that spans across two adjacent `[Page N]` images within THIS batch into its coherent beat without dropping half the sentence.
 5. JAPANESE ANIME AUDIO + VIETSUB FAITHFULNESS:
-   - `line`: Adapt the comic bubble concisely into short natural Japanese anime dialogue/monologue (romaji or Japanese, 1 brief sentence/clause <= 12 words) suitable for a native Japanese seiyuu within an 8s anime cut.
+   - `line`: Adapt the comic bubble concisely into short natural Japanese anime dialogue/monologue (romaji or Japanese, 1 brief sentence/clause <= 12 words) suitable for a native Japanese seiyuu.
    - `vietsub`: Translate the EXACT meaning and tone of that original comic bubble into natural, faithful Vietnamese (preserving humor, slang, urgency, or inner thoughts).
 6. NORMALIZED BOUNDING BOXES (`0..1000`):
    - Set `page_idx` to the exact integer page number shown in `[Page N]` where the character or panel appears.

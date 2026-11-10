@@ -1,4 +1,5 @@
 """Unit tests for AnimeDirectorGuard (ViMax Anime Director Mindset).
+Tests generic, parametric sakuga directing rules with ZERO story-specific hardcoding.
 """
 
 from pathlib import Path
@@ -25,7 +26,7 @@ def test_context_jump_detection():
 
     # 3. Calm comedy to sudden peril
     s_calm = "Cheerful bedroom eating cat food"
-    s_peril = "Sudden speeding SUV accident rescue"
+    s_peril = "Sudden speeding vehicle collision hazard"
     assert AnimeDirectorGuard.detect_context_jump(s_calm, s_peril) is True
 
 
@@ -41,12 +42,12 @@ def test_altitude_spatial_jump_detection():
 
 
 def test_sakuga_frame_skip_auto_correction():
-    # Anti-pattern: running carrying child across street
+    # Anti-pattern: clumsy running while carrying during high-speed action
     bad_shot = ShotBriefDescription(
         idx=5,
         is_last=False,
         cam_idx=1,
-        visual_desc="Seo Jiwoo is slowly running across the street carrying the small child in his arms away from the car.",
+        visual_desc="The hero is slowly running across the street carrying the civilian away from danger.",
         audio_desc="[Sound Effect] Whoosh.",
         target_duration_sec=8.0,
     )
@@ -60,27 +61,7 @@ def test_sakuga_frame_skip_auto_correction():
     assert "running across the street carrying" not in corrected.visual_desc
     assert "[AnimeFX: FrameSkip]" in corrected.visual_desc
     assert "[AnimeFX: SpeedStreak]" in corrected.visual_desc
-    assert corrected.target_duration_sec == 1.5
-
-
-def test_duplicate_victim_elimination():
-    # Anti-pattern: 2 boys playing soccer in traffic
-    bad_shot = ShotBriefDescription(
-        idx=0,
-        is_last=False,
-        cam_idx=0,
-        visual_desc="Two boys playing soccer kicking ball dangerously near the road curb.",
-        audio_desc="[Sound Effect] Ambient traffic.",
-    )
-
-    corrected = AnimeDirectorGuard.lint_and_auto_correct_shot_brief(
-        shot=bad_shot,
-        shot_idx=0,
-        total_shots=5,
-    )
-
-    assert "Two boys" not in corrected.visual_desc
-    assert "single young boy" in corrected.visual_desc
+    assert corrected.target_duration_sec == 1.2
 
 
 def test_dramatic_camera_mapping():
@@ -88,7 +69,7 @@ def test_dramatic_camera_mapping():
         idx=1,
         is_last=False,
         cam_idx=0,
-        visual_desc="Medium shot at eye level of a truck approaching.",
+        visual_desc="Medium shot at eye level of a threat approaching.",
         audio_desc="",
     )
     # Next shot also eye level with panic -> should be upgraded to Extreme close-up on eyes
@@ -96,8 +77,8 @@ def test_dramatic_camera_mapping():
         idx=2,
         is_last=False,
         cam_idx=1,
-        visual_desc="Shot at eye level: Jiwoo wide eyes in sudden panic shouting.",
-        audio_desc="[Speaker] Seo Jiwoo: 'Yabai!'",
+        visual_desc="Shot at eye level: Character wide eyes in sudden panic shouting.",
+        audio_desc="[Speaker] Character: 'Look out!'",
     )
 
     corrected = AnimeDirectorGuard.lint_and_auto_correct_shot_brief(
@@ -116,8 +97,8 @@ def test_kinetic_touchdown_enhancement():
         idx=7,
         is_last=False,
         cam_idx=1,
-        visual_desc="Touchdown and safe aftermath: Jiwoo already kneeling safely on the sidewalk holding Hojin.",
-        audio_desc="[Speaker] Seo Jiwoo: 'Daijoubu?'",
+        visual_desc="Touchdown and safe aftermath: The fighter already kneeling safely on the cobblestones holding the target.",
+        audio_desc="[Speaker] Character: 'Are you hurt?'",
         target_duration_sec=None,
     )
 
@@ -129,7 +110,8 @@ def test_kinetic_touchdown_enhancement():
 
     # Must inject kinetic deceleration friction & momentum dissipation
     assert "Kinetic deceleration friction" in corrected.visual_desc
-    assert "Sneakers slide hard" in corrected.visual_desc
+    assert "cobblestones" in corrected.visual_desc
+    assert "slide hard" in corrected.visual_desc
     assert "[AnimeFX: ActionBurst]" in corrected.visual_desc
 
 
@@ -139,9 +121,9 @@ def test_dialogue_duration_protection():
         idx=3,
         is_last=False,
         cam_idx=0,
-        visual_desc="Jiwoo kneeling holding boy.",
-        audio_desc="[Speaker] Seo Jiwoo: 'Haa... Daijoubu ka?'\n(Vietsub: Em không sao chứ?)",
-        target_duration_sec=2.0,  # Erroneously short
+        visual_desc="Warrior kneeling on ground.",
+        audio_desc="[Speaker] Warrior: 'Hold on tight, help is on the way.'\n(Vietsub: Giữ chặt nhé, cứu viện tới rồi.)",
+        target_duration_sec=1.5,  # Erroneously short
     )
 
     corrected = AnimeDirectorGuard.lint_and_auto_correct_shot_brief(
@@ -150,7 +132,33 @@ def test_dialogue_duration_protection():
         total_shots=6,
     )
 
-    assert corrected.target_duration_sec is None  # Preserves full ~6-8s speech duration!
+    assert corrected.target_duration_sec is None  # Preserves full speech duration!
+
+
+def test_altitude_descent_bridge_in_storyboard():
+    # Storyboard with sky shot followed by ground shot should inject camera descent bridge
+    shots = [
+        ShotBriefDescription(
+            idx=0,
+            is_last=False,
+            cam_idx=0,
+            visual_desc="High-angle establishing shot over cloudy night sky with cyan lightning.",
+            audio_desc="[Sound Effect] Thunder.",
+        ),
+        ShotBriefDescription(
+            idx=1,
+            is_last=False,
+            cam_idx=1,
+            visual_desc="Wounded warrior kneeling in dark alley against cracked stone wall.",
+            audio_desc="[Sound Effect] Rain drops.",
+        ),
+    ]
+
+    corrected = AnimeDirectorGuard.lint_and_auto_correct_storyboard(shots)
+
+    assert len(corrected) == 2
+    assert "tilt-down tracking shot" in corrected[0].visual_desc
+    assert "Dynamic camera tilt-down tracking descent continuing rapidly" in corrected[1].visual_desc
 
 
 def test_shot_description_scrubbing():
@@ -158,12 +166,12 @@ def test_shot_description_scrubbing():
         idx=4,
         is_last=False,
         cam_idx=0,
-        visual_desc="Jiwoo launches.",
+        visual_desc="Hero launches across asphalt.",
         variation_type="medium",
         variation_reason="Action",
-        ff_desc="Boy running across the street carrying the kid.",
+        ff_desc="Hero running across the asphalt carrying the target.",
         lf_desc="Still carrying while running.",
-        motion_desc="The boy is slowly jogging while holding the child.",
+        motion_desc="The hero is slowly jogging while holding the target.",
         audio_desc="",
     )
 
@@ -171,4 +179,5 @@ def test_shot_description_scrubbing():
 
     assert "carrying while running" not in scrubbed.lf_desc
     assert "slowly jogging while holding" not in scrubbed.motion_desc
-    assert "blurs in a directional supersonic wind rush" in scrubbed.motion_desc
+    assert "directional supersonic velocity rush" in scrubbed.motion_desc
+    assert "asphalt" in scrubbed.ff_desc

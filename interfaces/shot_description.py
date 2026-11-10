@@ -48,7 +48,7 @@ class ShotBriefDescription(BaseModel):
     )
     target_duration_sec: Optional[float] = Field(
         default=None,
-        description="Optional editorial duration (in seconds) for post-render pacing of silent anime action beats (e.g., 3.5-5.0s). Leave None for spoken dialogue shots or full ~8s beats.",
+        description="Optional editorial duration (in seconds) for post-render pacing of silent anime action beats (e.g., 1.2-3.0s). Leave None for spoken dialogue shots to preserve full audio duration.",
         examples=[None, 4.0, 3.5],
     )
 

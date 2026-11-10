@@ -48,8 +48,12 @@ The user will provide the following input.
 - When describing visual elements, it is necessary to indicate the position of the element within the frame. For example, Character A is on the left side of the frame, facing toward the right, with a table in front of him. The table is positioned slightly to the left of the center of the frame. Ensure that invisible elements are not included. For instance, do not describe someone behind a closed door if they cannot be seen.
 - Avoid unsafe content (violence, discrimination, etc.) in visual descriptions. Use indirect methods like sound, ragged clothing, or dusty crimson battle scuffs rather than graphic gore (NEVER substitute literal "ketchup").
 - Assign at most one dialogue line per character per shot. Each line of dialogue should correspond to a shot.
-- Target ~8 seconds per speech/establishing shot (~4-5 seconds per fast action beat). When the user specifies a target runtime (e.g., 3 min -> ~23 shots, 5 min -> ~38 shots, 10 min -> ~75 shots, 20 min full anime episode -> ~160-180 shots), generate enough distinct shots to fulfill that duration with smooth narrative progression rather than compressing the story too short or lingering redundantly on near-static beats.
-- CRITICAL SPOKEN DIALOGUE LENGTH BUDGET (ZERO MID-SENTENCE CUTOFFS): Each rendered clip is strictly 8 seconds long, and native video-to-speech leaves a ~1-1.5s visual settle window. Keep spoken dialogue in any single shot concise at **at most 1 brief sentence or clause totaling <= 12-15 spoken words** (finishing comfortably within ~4.5-6.0 seconds) so the character NEVER gets cut off mid-sentence! Whenever a line or narration exceeds 15 words or has multiple dramatic beats, ALWAYS split it across 2-3 consecutive continuous shots (`continuity_from_prev=True` + varied framing/reaction shots).
+- Dynamic Shot Duration & Editorial Pacing:
+  * Kinetic action cuts (blitz, dash, strike, dodge, impact flash): 0.8s - 2.0s for crisp, high-tempo Sakuga action.
+  * Momentum dissipation & landing (slide, skid, shockwave absorption): 1.8s - 3.2s.
+  * Dialogue / speech shots: 3.5s - 5.5s (calibrated to voice line duration + 0.5s visual settle cushion).
+  * Environmental establishing & atmospheric breathing ("Ma"): 4.0s - 7.0s.
+- Spoken Dialogue Length Budget (Zero Mid-Sentence Cutoffs): Keep spoken dialogue in any single shot concise at **at most 1 brief sentence or clause totaling <= 12-15 spoken words** (finishing comfortably within the shot's duration) so speech flows naturally without mid-sentence cutoffs. Whenever a speech or monologue exceeds 15 words, split it across consecutive continuous shots (`continuity_from_prev=True` with varied reverse-angle / reaction framing).
 - Each shot requires an independent description without reference to each other.
 - When the shot focuses on a character, describe which specific body part the focus is on.
 - When describing a character, it is necessary to indicate the direction they are facing.
@@ -85,10 +89,10 @@ The user will provide the following input.
       3. *Impact Flash & Ground Shockwave*: Extreme low ground-level / worm's-eye Dutch angle on wet asphalt/earth: Blinding impact explosion, sparks/debris blasting outward, steam and shockwave rippling across walls.
       4. *Kinetic Friction Skid & Recovery*: Tilted Dutch wide/medium shot from behind: The character slides on boots/knees along the pavement dissipating immense momentum, one trembling hand clawing the wall/ground for support, residual energy/steam fizzling out, ragged breathing.
       5. *Pained / Exhausted Monologue*: Dramatic Dutch close-up on gritted teeth, dripping sweat/blood scuffs, hand trembling on wall.
-    * **Superhuman Speed Rescue Deceleration (Tiếp đất & Giảm tốc sau Cứu thoát)**:
-      1. *Sneaker Friction Skid Cut*: Low-angle shot along sidewalk tiles: Character's sneakers slide hard across pavement tiles kicking up dust and friction smoke, loose tie and school backpack whipping forward from intense inertia!
-      2. *Protective Pivot & Wind Shockwave*: Rescuer spins their torso around to shield the child with their own back, sonic wind displacement swirling dust and fluttering bystanders' coats!
-      3. *Gentle Knee Drop & Breathless Relief*: Only after momentum is fully dissipated does the hero drop to one knee, trembling hands checking the child's shoulders as breathless adrenaline fades.
+    * **High-Speed Deceleration & Touchdown (Tiếp đất & Giảm tốc sau di chuyển nhanh)**:
+      1. *Footwear Friction Skid Cut*: Low-angle shot along the ground: Character's footwear slides hard across the surface kicking up friction dust and smoke, clothing whipping forward from intense inertia!
+      2. *Protective Pivot & Wind Shockwave*: Subject pivots low to absorb momentum, air displacement swirling dust and debris outward!
+      3. *Controlled Settle & Relief*: Only after momentum is fully dissipated does the character drop to one knee or plant feet firmly, settling into recovery as adrenaline fades.
 - Dramatic Camera Mapping & Angle Pacing (Quy chuẩn góc máy điện ảnh bắt buộc):
   - NEVER repeat eye-level medium shots consecutively. Vary camera heights and angles dynamically to guide audience emotions:
     * **Extreme Close-Up on Eyes**: Used at the moment of sudden horror, panic, or awakened realization (e.g. pupils shrinking, light reflection, sweat bead on temple).
@@ -102,17 +106,16 @@ The user will provide the following input.
   - **Ufotable / MAPPA Sakuga Preset (Action / Superhuman Combat)**:
     For battles, super-speed dashes, and awakening moments, describe: *Ufotable / MAPPA sakuga action style, sharp crisp cel shading, high contrast, luminous rim lighting, dynamic motion blur*.
 - Anime Visual Effects & High-Speed Action Staging (Sakuga VFX):
-  - **Canon Lore Attribute Integrity**:
-    * In early Eleceed (Episode 1), Seo Jiwoo possesses ONLY raw superhuman speed, wind pressure, and supersonic momentum; he has ZERO electric or lightning powers (Lightning belongs exclusively to Kayden Break). Do NOT add lightning sparks or elaborate Dragon Ball-style energy charging for Jiwoo.
-    * Jiwoo does not even know how to control his powers yet—his rescue dash is pure split-second adrenaline instinct!
+  - **Canon Power & Attribute Integrity**:
+    * Strictly obey the powers, elements, and physical limitations documented in the character roster. Do NOT invent foreign magical effects, auras, or energy types not belonging to the character.
   - Anime Frame Skip & Visual Ellipsis (Tỉnh lược khung hình & Nhịp độ Kinetic):
-    * Action and hazard shots must be fast and snappy (1.5s–2.5s), NEVER lingering for 8 seconds which makes fast vehicles look frozen!
+    * Action and hazard shots must be fast and snappy (1.2s–2.5s), NEVER lingering for excessive durations!
     * Direct authentic Japanese anime action shorthand (4-Phase Sakuga Grammar):
-      1. **Pha 1 (Instinctive Push-off / Sudden Spring)**: Sudden adrenaline reflex, shoe rubber kicking off the asphalt, sudden shockwave burst of wind blowing dust and hair (`[AnimeFX: ActionBurst]`). Duration: ~1.8s.
-      2. **Pha 2 (Frame Skip & Speed Streak)**: Tag `[AnimeFX: FrameSkip]` + `[AnimeFX: SpeedStreak]` (or `[AnimeFX: Vanish]`). The screen blurs into directional sonic air blur and clear wind streaks (`vệt tốc độ / vệt áp lực gió`), and the subjects vanish in a single frame. Duration: ~1.5s.
-      3. **Pha 3 (Empty Impact / Near-Miss Momentum)**: Tag `[AnimeFX: SpeedLines]` + `[AnimeFX: ScreenShake]`. The vehicle violently screeches past the completely EMPTY danger zone with smoking skid marks. Duration: ~2.5s.
-      4. **Pha 4 (Kinetic Sidewalk Friction Skid & Protective Shield)**: Tag `[AnimeFX: ActionBurst]`. Low-angle shot along pavement tiles: rescuer's sneakers slide hard creating friction dust, torso spinning to shield the child with their back as sonic wind shockwave ripples across the sidewalk! Duration: ~1.8s.
-      5. **Pha 5 (Relief Touchdown & Gentle Check)**: Dropping to one knee on the sunlit sidewalk, hands checking the dazed child in breathless relief as bystanders stare. Duration: full ~6.0s–8.0s for dialogue.
+      1. **Pha 1 (Instinctive Push-off / Sudden Spring)**: Sudden adrenaline reflex, feet kicking off the ground, sudden shockwave burst of wind blowing dust and hair (`[AnimeFX: ActionBurst]`). Duration: ~1.5s.
+      2. **Pha 2 (Frame Skip & Speed Streak)**: Tag `[AnimeFX: FrameSkip]` + `[AnimeFX: SpeedStreak]` (or `[AnimeFX: Vanish]`). The screen blurs into directional sonic air blur and clear wind streaks (`vệt tốc độ / vệt áp lực gió`), and the subjects vanish in a single frame. Duration: ~1.2s.
+      3. **Pha 3 (Empty Impact / Near-Miss Momentum)**: Tag `[AnimeFX: SpeedLines]` + `[AnimeFX: ScreenShake]`. The hazard violently sweeps past the completely EMPTY zone with smoking skid marks or shockwave. Duration: ~2.0s.
+      4. **Pha 4 (Kinetic Friction Skid & Momentum Absorption)**: Tag `[AnimeFX: ActionBurst]`. Low-angle shot along the ground: footwear slides hard creating friction smoke, body pivoting low to absorb momentum as shockwave ripples outward! Duration: ~1.8s.
+      5. **Pha 5 (Touchdown Settle & Reaction)**: Settling into breath recovery, surrounded by settling dust. Duration: 3.5s–5.5s for dialogue/reaction.
     * Clash / Sonic Boom: Tag `[AnimeFX: Impact]` (sakuga monochrome flash) + `[AnimeFX: ScreenShake]`.
     * Critical Tension: Tag `[AnimeFX: SlowMo]` (bullet-time dilation) before explosive action snaps.
 - Dialogue Attribution & Lip-Sync Integrity:

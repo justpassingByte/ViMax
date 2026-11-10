@@ -2,10 +2,11 @@
 
 Enforces professional anime directing grammar across all stages of production:
 1. Context Jump Detection & Ma (Negative Space / Environmental Breathing)
-2. 4-Phase Sakuga Action Grammar (Anticipation -> Frame Skip -> Empty Impact -> Touchdown)
-3. Anti-Pattern Linting (Bans physical running/carrying in superhuman actions; bans duplicate victim clones)
-4. Dramatic Camera Mapping (Enforces eye close-up, Dutch angle, bird's-eye, dynamic low-angle 3/4; bans consecutive eye-level monotony)
-5. Dynamic Duration & Audio-Visual Sync (2.0s-3.5s for kinetic flashes, 6.0s-8.0s for dialogue/breathing)
+2. Sakuga Action Grammar (Anticipation -> Frame Skip -> Empty Impact -> Momentum Dissipation)
+3. Parametric Anti-Pattern Linting (Eliminates clumsy physical running in superhuman actions; generic templates)
+4. Dramatic Camera Mapping (Enforces eye close-up, Dutch angle, bird's-eye, dynamic low-angle 3/4; bans eye-level monotony)
+5. Spatial & Altitude Continuity (Swooping tilt-down tracking descent bridge between sky and ground)
+6. Dynamic Duration Pacing (1.2s-2.0s for kinetic bursts, 2.5s-3.5s for dissipation, voice+0.5s for dialogue)
 """
 
 from __future__ import annotations
@@ -23,18 +24,76 @@ BANNED_ACTION_MOTION_PATTERNS = [
     re.compile(r"\b(?:clumsy|awkward)\s+(?:run|running|sprint)\b", re.IGNORECASE),
 ]
 
-# Anti-patterns where multiple generic victims are drawn in a solo danger beat
-DUPLICATE_VICTIM_PATTERNS = [
-    re.compile(r"\b(?:two|2|several|group of)\s+(?:boys|children|kids)\b.*\b(?:playing\s+soccer|kicking\s+ball)\b", re.IGNORECASE),
-]
-
-# High-speed action triggers requiring 4-phase Sakuga grammar
+# High-speed action triggers requiring Sakuga grammar
 SUPERHUMAN_SPEED_TRIGGERS = [
     "super-speed", "superspeed", "superhuman speed", "awakened", "lightning speed",
     "shunpo", "soru", "flash step", "teleport", "vanish", "blitz", "dash", "vụt qua",
     "siêu tốc", "tốc biến", "lướt đi", "biến mất", "cứu thoát", "né đòn",
-    "touchdown", "tiếp đất", "aftermath", "rescue", "giải cứu"
+    "touchdown", "tiếp đất", "aftermath", "rescue", "giải cứu", "landing", "impact"
 ]
+
+SURFACE_KEYWORDS = [
+    "cobblestones", "cobblestone", "asphalt", "pavement", "concrete", "stone", "gravel",
+    "grass", "water", "wood", "rooftop", "metal tiles", "tiles", "ground", "floor", "sidewalk"
+]
+
+FORCE_FX_KEYWORDS = [
+    "cyan electric sparks", "lightning arcs", "cyan lightning", "flames", "shockwave",
+    "gusts of wind", "friction smoke and dust", "sonic wind rush", "air pressure wave",
+    "kinetic force", "energy blast"
+]
+
+SPATIAL_ZONE_KEYWORDS = [
+    ("alley", "the narrow alleyway"),
+    ("hẻm", "the narrow alleyway"),
+    ("crosswalk", "the street crosswalk"),
+    ("intersection", "the busy intersection"),
+    ("ngã tư", "the street intersection"),
+    ("street", "the street level"),
+    ("đường", "the street level"),
+    ("courtyard", "the courtyard ground"),
+    ("rooftop", "the lower rooftop"),
+    ("ground", "the ground"),
+]
+
+
+def extract_context_subject(vis: str, characters: Optional[List[CharacterInScene]] = None) -> str:
+    """Extract primary character or subject from text/characters list without hardcoding."""
+    match = re.search(r"<([^>]+)>", vis)
+    if match:
+        return f"<{match.group(1)}>"
+    if characters:
+        for c in characters:
+            if c.is_visible and c.identifier_in_scene and c.identifier_in_scene.lower() != "narrator":
+                return f"<{c.identifier_in_scene}>"
+    return "The subject"
+
+
+def extract_context_surface(text: str) -> str:
+    """Extract physical surface from text keywords."""
+    text_l = (text or "").lower()
+    for surf in SURFACE_KEYWORDS:
+        if surf in text_l:
+            return surf
+    return "the ground"
+
+
+def extract_context_force_fx(text: str) -> str:
+    """Extract visual force FX from text keywords."""
+    text_l = (text or "").lower()
+    for fx in FORCE_FX_KEYWORDS:
+        if fx in text_l:
+            return fx
+    return "atmospheric shockwave"
+
+
+def extract_context_spatial_zone(text: str) -> str:
+    """Extract target spatial destination for descent continuity."""
+    text_l = (text or "").lower()
+    for kw, zone in SPATIAL_ZONE_KEYWORDS:
+        if kw in text_l:
+            return zone
+    return "the ground level"
 
 
 class AnimeDirectorGuard:
@@ -68,8 +127,8 @@ class AnimeDirectorGuard:
         prev_l = (prev_desc or "").lower()
         curr_l = (curr_desc or "").lower()
 
-        sky_kws = ["sky", "clouds", "cloudy", "rooftops", "high-angle establishing", "bầu trời", "trên trời", "trên không"]
-        ground_kws = ["alley", "ground", "asphalt", "pavement", "kneeling", "hẻm", "mặt đất", "quỳ", "street level", "sidewalk"]
+        sky_kws = ["sky", "clouds", "cloudy", "rooftops", "high-angle establishing", "high altitude", "bầu trời", "trên trời", "trên không"]
+        ground_kws = ["alley", "ground", "asphalt", "pavement", "kneeling", "hẻm", "mặt đất", "quỳ", "street level", "sidewalk", "cobblestone"]
 
         was_sky = any(kw in prev_l for kw in sky_kws)
         now_ground = any(kw in curr_l for kw in ground_kws)
@@ -92,60 +151,57 @@ class AnimeDirectorGuard:
         dur = shot.target_duration_sec
         trans = shot.transition_in or "cut"
 
-        # 1. Detect and eliminate banned physical running / carrying in rescue actions
+        subject = extract_context_subject(vis, characters)
+        surface = extract_context_surface(vis)
+        force_fx = extract_context_force_fx(vis)
+
+        # 1. Eliminate banned clumsy running / carrying during high-speed actions
         for pat in BANNED_ACTION_MOTION_PATTERNS:
             if pat.search(vis):
-                # Auto-correct to Sakuga Frame Skip (pure sonic wind rush, zero lightning, zero clumsy running)
                 vis = re.sub(
                     pat,
-                    "blurs in a blinding supersonic wind rush and sonic air blur, scooping the victim in a single frame skip, vanishing instantly",
+                    f"blurs in a blinding supersonic velocity streak and {force_fx}, securing the target in a single Sakuga frame skip without breaking forward momentum",
                     vis,
                 )
                 if "[AnimeFX: FrameSkip]" not in vis:
                     vis = f"{vis} [AnimeFX: FrameSkip] [AnimeFX: SpeedStreak] [AnimeFX: Vanish]"
                 if "[AnimeFX: FrameSkip]" not in aud:
                     aud = f"{aud} [AnimeFX: FrameSkip] [AnimeFX: SpeedStreak] [AnimeFX: Vanish]"
-                dur = 1.8
+                dur = 1.5
 
-        # 2. Detect and eliminate duplicate victim clones in road hazard beats
-        for pat in DUPLICATE_VICTIM_PATTERNS:
-            if pat.search(vis):
-                vis = re.sub(pat, "a single young boy chasing a runaway soccer ball into traffic", vis)
-
-        # 3. Superhuman speed / instinctive dash auto-tagging and dynamic duration calibration
+        # 2. Superhuman speed / instinctive dash auto-tagging and dynamic duration calibration
         is_speed_action = any(kw in vis.lower() for kw in SUPERHUMAN_SPEED_TRIGGERS)
         if is_speed_action:
             if any(kw in vis.lower() for kw in ["launch", "sprinter", "crouch", "ignite", "tụ lực", "xuất phát", "instinct", "bản năng"]):
-                # Pha 1: Pure Instinctive Sprint Push (snappy, no elaborate dragon-ball charging)
+                # Phase 1: Pure Instinctive Sprint Push
                 if "[AnimeFX: ActionBurst]" not in vis:
                     vis = f"{vis} [AnimeFX: ActionBurst] [AnimeFX: Chromatic]"
-                dur = 1.8
+                dur = 1.5
             elif any(kw in vis.lower() for kw in ["streak", "blitz", "vanish", "frame skip", "vụt qua", "biến mất"]):
-                # Pha 2: Supersonic Blitz / Frame Skip
+                # Phase 2: Supersonic Blitz / Frame Skip
                 if "[AnimeFX: FrameSkip]" not in vis:
                     vis = f"{vis} [AnimeFX: FrameSkip] [AnimeFX: SpeedStreak] [AnimeFX: Vanish]"
-                dur = 1.5
+                dur = 1.2
             elif any(kw in vis.lower() for kw in ["skid", "screech", "brakes", "smoke", "empty", "phanh", "trống rỗng"]):
-                # Pha 3: Empty Impact / SUV Momentum
+                # Phase 3: Empty Impact / Shockwave
                 if "[AnimeFX: SpeedLines]" not in vis:
                     vis = f"{vis} [AnimeFX: SpeedLines] [AnimeFX: ScreenShake]"
-                dur = 2.5
-            elif any(kw in vis.lower() for kw in ["touchdown", "aftermath", "cradling", "safe", "tiếp đất"]):
-                # Pha 4 & 5: Kinetic Deceleration & Momentum Dissipation (Ban flat static 1:1 comic poses)
+                dur = 2.0
+            elif any(kw in vis.lower() for kw in ["touchdown", "aftermath", "cradling", "safe", "tiếp đất", "landing"]):
+                # Phase 4 & 5: Kinetic Deceleration & Momentum Dissipation (Parametric template)
                 if not any(kw in vis.lower() for kw in ["friction", "slide", "skid", "trượt", "ma sát", "sóng xung kích"]):
-                    if "kneel" in vis.lower() or "quỳ" in vis.lower():
-                        vis = f"Kinetic deceleration friction: Sneakers slide hard across pavement tiles kicking up dust and friction smoke, body pivoting to shield the victim as sonic wind shockwave ripples across the sidewalk, before settling into breathless relief: {vis}"
-                        if "[AnimeFX: ActionBurst]" not in vis:
-                            vis = f"{vis} [AnimeFX: ActionBurst]"
-                dur = None  # Full duration for relief dialogue!
+                    vis = f"Kinetic deceleration friction: {subject}'s boots slide hard across {surface} kicking up friction dust and smoke, body pivoting low to absorb momentum as {force_fx} dissipates, settling into recovery: {vis}"
+                    if "[AnimeFX: ActionBurst]" not in vis:
+                        vis = f"{vis} [AnimeFX: ActionBurst]"
+                dur = 2.5
 
-        # 4. Dramatic Camera Mapping (Enforce cinematic angles, ban eye-level monotony)
+        # 3. Dramatic Camera Mapping (Enforce cinematic angles, ban eye-level monotony)
         DYNAMIC_ANGLE_PATTERNS = [
             "low-angle", "low angle", "worm's eye", "worm's-eye", "ground-level", "ground level",
             "overhead", "bird's-eye", "bird's eye", "top-down", "high angle",
             "close-up on eyes", "extreme close-up", "extreme face close-up",
             "dutch angle", "dutch-angle", "canted angle", "canted", "tilted horizon",
-            "slanted perspective"
+            "slanted perspective", "tracking shot"
         ]
         has_dynamic_angle = any(p in vis.lower() for p in DYNAMIC_ANGLE_PATTERNS)
 
@@ -154,21 +210,22 @@ class AnimeDirectorGuard:
             if any(kw in curr_vis_l for kw in ["panic", "wide eyes", "alarm", "hoảng loạn", "sợ hãi", "terror"]):
                 vis = f"Extreme close-up on eyes, dramatic pupils dilated in sudden horror: {vis}"
             elif any(kw in curr_vis_l for kw in ["speed", "launch", "crouch", "tụ lực", "sprinter", "activation"]):
-                vis = f"Dynamic low-angle 3/4 perspective looking up from asphalt: {vis}"
-            elif any(kw in curr_vis_l for kw in ["danger", "approaching", "hurtling", "lao tới", "suv", "truck", "car"]):
+                vis = f"Dynamic low-angle 3/4 perspective looking up from {surface}: {vis}"
+            elif any(kw in curr_vis_l for kw in ["danger", "approaching", "hurtling", "lao tới", "vehicle", "threat", "car", "truck"]):
                 vis = f"Dramatic Dutch-angle slanted perspective, tilted 15-degree horizon: {vis}"
-            elif any(kw in curr_vis_l for kw in ["child", "boy", "victim", "frozen", "helpless", "chasing"]):
-                vis = f"High overhead bird's-eye perspective looking down at asphalt: {vis}"
+            elif any(kw in curr_vis_l for kw in ["victim", "frozen", "helpless", "chasing", "target"]):
+                vis = f"High overhead bird's-eye perspective looking down at {surface}: {vis}"
             elif any(kw in curr_vis_l for kw in ["walk", "street", "corner", "avenue", "city"]):
                 if shot_idx % 2 == 0:
                     vis = f"Atmospheric cinematic wide angle with deep vanishing point: {vis}"
                 else:
-                    vis = f"Low-angle tracking shot along pavement: {vis}"
+                    vis = f"Low-angle tracking shot along {surface}: {vis}"
 
-        # 5. Dialogue protection: Never abbreviate or speed-up shots with spoken dialogue
+        # 4. Dialogue protection: Never abbreviate or speed-up shots with spoken dialogue
         has_dialogue = bool(re.search(r"\[(?:Speaker|Thought)\]", aud, re.IGNORECASE))
-        if has_dialogue and dur is not None and dur < 5.0:
-            dur = None  # Preserve full ~6.0s - 8.0s duration for speech clarity!
+        if has_dialogue:
+            if dur is not None and dur < 4.0:
+                dur = None  # Preserve proper duration for speech clarity!
 
         return shot.model_copy(
             update={
@@ -200,12 +257,13 @@ class AnimeDirectorGuard:
             )
             # Smooth vertical / altitude jumps (e.g. sky streak down to ground alley)
             if prev is not None and cls.detect_altitude_spatial_jump(prev.visual_desc, fixed.visual_desc):
+                lower_zone = extract_context_spatial_zone(fixed.visual_desc)
                 # Update previous shot to swoop downward
                 if "[Camera: Rapid tilt-down" not in prev.visual_desc:
-                    prev_updated_vis = f"{prev.visual_desc} [Camera: Rapid tilt-down tracking shot swooping downward toward the narrow alleyway below]"
+                    prev_updated_vis = f"{prev.visual_desc} [Camera: Rapid tilt-down tracking shot swooping downward toward {lower_zone}]"
                     corrected_shots[i - 1] = prev.model_copy(update={"visual_desc": prev_updated_vis})
                 # Update current shot to smoothly continue the descent
-                curr_vis = f"Dynamic camera tilt-down descent continuing rapidly from the stormy sky into the shadowy alleyway: {fixed.visual_desc}"
+                curr_vis = f"Dynamic camera tilt-down tracking descent continuing rapidly from high altitude downward toward {lower_zone}: {fixed.visual_desc}"
                 fixed = fixed.model_copy(update={"visual_desc": curr_vis})
 
             corrected_shots.append(fixed)
@@ -224,24 +282,28 @@ class AnimeDirectorGuard:
         ff = sd.ff_desc or vis
         lf = sd.lf_desc or vis
 
+        subject = extract_context_subject(vis, characters)
+        surface = extract_context_surface(vis)
+        force_fx = extract_context_force_fx(vis)
+
         # Scrub banned motion phrases from motion_desc, ff_desc, lf_desc
         for pat in BANNED_ACTION_MOTION_PATTERNS:
             if pat.search(motion):
                 motion = re.sub(
                     pat,
-                    "blurs in a directional supersonic wind rush and air pressure blur, vanishing from the road in a single frame skip",
+                    f"blurs in a directional supersonic velocity rush and {force_fx}, securing the target in a single Sakuga frame skip",
                     motion,
                 )
             if pat.search(ff):
                 ff = re.sub(
                     pat,
-                    "pushes off the curb on pure adrenaline instinct, sudden blast of wind and dust exploding backward from sneakers, zero lightning",
+                    f"launches forward on pure instinct, sudden blast of {force_fx} exploding backward from boots across {surface}",
                     ff,
                 )
             if pat.search(lf):
                 lf = re.sub(
                     pat,
-                    "vanishes into a blinding sonic speed streak, leaving empty road behind",
+                    f"vanishes into a blinding sonic speed streak, leaving empty {surface} behind",
                     lf,
                 )
 
