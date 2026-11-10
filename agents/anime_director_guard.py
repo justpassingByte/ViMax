@@ -118,18 +118,31 @@ class AnimeDirectorGuard:
                 # Pha 4: Touchdown & Aftermath
                 dur = None  # Full duration for relief dialogue!
 
-        # 4. Dramatic Camera Mapping (Prevent eye-level monotony)
-        if prev_shot and prev_shot.visual_desc:
-            prev_vis = prev_shot.visual_desc.lower()
-            curr_vis = vis.lower()
-            # If both shots lack explicit dynamic angles and sound like generic eye-level shots
-            if "eye level" in prev_vis and "eye level" in curr_vis:
-                if any(kw in curr_vis for kw in ["panic", "wide eyes", "alarm", "hoảng loạn", "sợ hãi"]):
-                    vis = f"Extreme close-up on eyes, dramatic pupils dilated in sudden horror: {vis}"
-                elif any(kw in curr_vis for kw in ["speed", "launch", "crouch", "tụ lực"]):
-                    vis = f"Dynamic low-angle 3/4 perspective looking up from asphalt: {vis}"
-                elif any(kw in curr_vis for kw in ["danger", "approaching", "hurtling", "lao tới"]):
-                    vis = f"Dramatic Dutch-angle slanted perspective, tilted horizon: {vis}"
+        # 4. Dramatic Camera Mapping (Enforce cinematic angles, ban eye-level monotony)
+        DYNAMIC_ANGLE_PATTERNS = [
+            "low-angle", "low angle", "worm's eye", "worm's-eye", "ground-level", "ground level",
+            "overhead", "bird's-eye", "bird's eye", "top-down", "high angle",
+            "close-up on eyes", "extreme close-up", "extreme face close-up",
+            "dutch angle", "dutch-angle", "canted angle", "canted", "tilted horizon",
+            "slanted perspective"
+        ]
+        has_dynamic_angle = any(p in vis.lower() for p in DYNAMIC_ANGLE_PATTERNS)
+
+        if not has_dynamic_angle:
+            curr_vis_l = vis.lower()
+            if any(kw in curr_vis_l for kw in ["panic", "wide eyes", "alarm", "hoảng loạn", "sợ hãi", "terror"]):
+                vis = f"Extreme close-up on eyes, dramatic pupils dilated in sudden horror: {vis}"
+            elif any(kw in curr_vis_l for kw in ["speed", "launch", "crouch", "tụ lực", "sprinter", "activation"]):
+                vis = f"Dynamic low-angle 3/4 perspective looking up from asphalt: {vis}"
+            elif any(kw in curr_vis_l for kw in ["danger", "approaching", "hurtling", "lao tới", "suv", "truck", "car"]):
+                vis = f"Dramatic Dutch-angle slanted perspective, tilted 15-degree horizon: {vis}"
+            elif any(kw in curr_vis_l for kw in ["child", "boy", "victim", "frozen", "helpless", "chasing"]):
+                vis = f"High overhead bird's-eye perspective looking down at asphalt: {vis}"
+            elif any(kw in curr_vis_l for kw in ["walk", "street", "corner", "avenue", "city"]):
+                if shot_idx % 2 == 0:
+                    vis = f"Atmospheric cinematic wide angle with deep vanishing point: {vis}"
+                else:
+                    vis = f"Low-angle tracking shot along pavement: {vis}"
 
         # 5. Dialogue protection: Never abbreviate or speed-up shots with spoken dialogue
         has_dialogue = bool(re.search(r"\[(?:Speaker|Thought)\]", aud, re.IGNORECASE))
