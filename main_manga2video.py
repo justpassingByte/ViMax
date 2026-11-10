@@ -244,6 +244,7 @@ async def run_manga2video_cli(argv: Sequence[str] | None = None) -> dict[str, An
         episode_title=args.series_title,
         batch_size=args.batch_size,
         force_replan=args.force_replan,
+        scene_range=args.scene_range,
         allow_private_urls=args.allow_private_urls,
         progress=progress,
         quiet=args.jsonl,

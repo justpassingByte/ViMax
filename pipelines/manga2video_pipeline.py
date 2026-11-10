@@ -270,6 +270,7 @@ class Manga2VideoPipeline:
         episode_title: str = "",
         batch_size: int = 3,
         force_replan: bool = False,
+        scene_range: str | int | Sequence[int] | None = None,
         webtoon_fetcher=None,
         allow_private_urls: bool = False,
         manifest: Optional[ComicManifest] = None,
@@ -430,9 +431,15 @@ class Manga2VideoPipeline:
             "and maintain visual character & panel fidelity."
         ).strip()
 
+        selected_scenes = parse_chapter_range(scene_range) if scene_range is not None else None
+
         for scene_meta in episode_plan.scenes:
             sc_idx = scene_meta.scene_idx
+            if selected_scenes is not None and sc_idx not in selected_scenes:
+                continue
             scene_dir = work_root / f"scene_{sc_idx}"
+            if (scene_dir / "camera_tree.json").is_file() and (scene_dir / "storyboard.json").is_file() and not force_replan:
+                continue
             scene_dir.mkdir(parents=True, exist_ok=True)
             scene_script = (scene_dir / "script.txt").read_text(encoding="utf-8")
             scene_beats = beats_by_scene.get(sc_idx, [])
