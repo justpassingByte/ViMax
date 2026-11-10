@@ -29,6 +29,17 @@ def test_context_jump_detection():
     assert AnimeDirectorGuard.detect_context_jump(s_calm, s_peril) is True
 
 
+def test_altitude_spatial_jump_detection():
+    # Abrupt jump from sky establishing to ground alley
+    prev_vis = "High-angle establishing shot over quiet multi-story rooftops and cloudy night sky with cyan lightning."
+    curr_vis = "Kayden kneeling on wet asphalt against a cracked stone alley wall."
+    assert AnimeDirectorGuard.detect_altitude_spatial_jump(prev_vis, curr_vis) is True
+
+    # Already has descent motion
+    curr_vis_descent = "Continuing camera descent into shadowy alleyway: Kayden kneeling on wet asphalt."
+    assert AnimeDirectorGuard.detect_altitude_spatial_jump(prev_vis, curr_vis_descent) is False
+
+
 def test_sakuga_frame_skip_auto_correction():
     # Anti-pattern: running carrying child across street
     bad_shot = ShotBriefDescription(

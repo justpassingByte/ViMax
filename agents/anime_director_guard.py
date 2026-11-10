@@ -61,6 +61,21 @@ class AnimeDirectorGuard:
 
         return (was_interior and now_exterior) or (was_calm and now_peril)
 
+    @staticmethod
+    def detect_altitude_spatial_jump(prev_desc: str, curr_desc: str) -> bool:
+        """Detect abrupt vertical/spatial jumps (e.g. sky/clouds to ground/alley) requiring camera descent continuity."""
+        prev_l = (prev_desc or "").lower()
+        curr_l = (curr_desc or "").lower()
+
+        sky_kws = ["sky", "clouds", "cloudy", "rooftops", "high-angle establishing", "bầu trời", "trên trời", "trên không"]
+        ground_kws = ["alley", "ground", "asphalt", "pavement", "kneeling", "hẻm", "mặt đất", "quỳ", "street level", "sidewalk"]
+
+        was_sky = any(kw in prev_l for kw in sky_kws)
+        now_ground = any(kw in curr_l for kw in ground_kws)
+        has_descent_already = any(kw in curr_l for kw in ["descent", "tilt-down", "swoop", "downward", "hạ độ cao"])
+
+        return was_sky and now_ground and not has_descent_already
+
     @classmethod
     def lint_and_auto_correct_shot_brief(
         cls,
@@ -177,6 +192,16 @@ class AnimeDirectorGuard:
                 prev_shot=prev,
                 characters=characters,
             )
+            # Smooth vertical / altitude jumps (e.g. sky streak down to ground alley)
+            if prev is not None and cls.detect_altitude_spatial_jump(prev.visual_desc, fixed.visual_desc):
+                # Update previous shot to swoop downward
+                if "[Camera: Rapid tilt-down" not in prev.visual_desc:
+                    prev_updated_vis = f"{prev.visual_desc} [Camera: Rapid tilt-down tracking shot swooping downward toward the narrow alleyway below]"
+                    corrected_shots[i - 1] = prev.model_copy(update={"visual_desc": prev_updated_vis})
+                # Update current shot to smoothly continue the descent
+                curr_vis = f"Dynamic camera tilt-down descent continuing rapidly from the stormy sky into the shadowy alleyway: {fixed.visual_desc}"
+                fixed = fixed.model_copy(update={"visual_desc": curr_vis})
+
             corrected_shots.append(fixed)
 
         return corrected_shots

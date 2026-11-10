@@ -106,6 +106,20 @@ def _collect_priority_shot_idxs(camera_tree: List[Camera]) -> List[int]:
 
 def shot_requires_last_frame(shot_descriptions: List[ShotDescription], shot: ShotDescription) -> bool:
     """Return True when a shot should render and lock an explicit last_frame keyframe."""
+    vis = (getattr(shot, "visual_desc", "") or "") + " " + (getattr(shot, "motion_desc", "") or "")
+    
+    # 1. Flexible Sakuga Keyframing: Action bursts, dashes, vanishes, and pure speed blitz
+    # NEVER generate a separate last frame (Image-to-Video single frame conditioning).
+    # This prevents 24fps diffusion models from hallucinating 192 frames of morphing or awkward filler running!
+    if any(tag in vis for tag in ["[AnimeFX: FrameSkip]", "[AnimeFX: ActionBurst]", "[AnimeFX: SpeedStreak]", "[AnimeFX: Vanish]"]) or \
+       any(kw in vis.lower() for kw in ["vanish", "biến mất", "supersonic", "blitz", "shunpo", "flash step"]):
+        return False
+
+    # 2. State transformations (e.g. human -> cat transformation) MUST use both frames
+    is_transformation = any(kw in vis.lower() for kw in ["transform", "morph", "biến hình", "biến thân", "mèo béo"])
+    if is_transformation:
+        return True
+
     if getattr(shot, "variation_type", "small") in {"medium", "large"}:
         return True
     if bool(getattr(shot, "continuity_from_prev", False)):
