@@ -405,8 +405,100 @@ def extract_vietsubs_from_script(script_text: str) -> Dict[int, str]:
     return normalized
 
 
-def extract_vietsubs_from_shots(shot_descriptions: List[Any]) -> Dict[int, str]:
-    """Extract inline `(Vietsub: ...)` lines stored inside ShotDescription.audio_desc."""
+def extract_speaker_and_dialogue_info(audio_desc: str) -> Dict[str, Any]:
+    """Generic extractor for speaker name, delivery mode (spoken vs thought), emotion, and clean speaker label."""
+    if not audio_desc:
+        return {"speaker": "", "is_thought": False, "emotion": "", "clean_speaker": ""}
+
+    # 1. Narrator
+    narrator_match = re.search(
+        r"\[(?:Speaker|Off-screen.*?Voiceover)\]\s*(?:Người Dẫn Chuyện|Narrator)\s*(?:\([^)]*\))?\s*:",
+        audio_desc,
+        re.IGNORECASE,
+    )
+    if narrator_match:
+        return {
+            "speaker": "Narrator",
+            "is_thought": False,
+            "emotion": "",
+            "clean_speaker": "Người dẫn chuyện",
+        }
+
+    # 2. Thought / Inner monologue patterns
+    thought_match = re.search(
+        r"\[(?:Thought|Inner\s*Monologue)\]\s*([^:\n]+?)\s*:",
+        audio_desc,
+        re.IGNORECASE,
+    )
+    if not thought_match:
+        thought_match = re.search(
+            r"\[Speaker\]\s*([^:\n]+?)\s*\(([^)]*inner\s*monologue[^)]*)\)\s*:",
+            audio_desc,
+            re.IGNORECASE,
+        )
+    if not thought_match:
+        thought_match = re.search(
+            r"\[Off-screen\s+Japanese\s+Inner\s+Monologue\s+Voiceover\s+of\s+([^:\]\n]+?)\]\s*:",
+            audio_desc,
+            re.IGNORECASE,
+        )
+    if thought_match:
+        block = thought_match.group(1).strip()
+        clean_speaker = re.sub(r"\s*\([^)]*\)", "", block).strip()
+        em = re.findall(r"\(([^)]+)\)", block)
+        raw_em = em[-1].strip() if em else ""
+        emotion = "" if re.search(r"\b(cat|human|boy|girl|man|woman)\b", raw_em.lower()) else raw_em
+        return {
+            "speaker": block,
+            "is_thought": True,
+            "emotion": emotion,
+            "clean_speaker": clean_speaker,
+        }
+
+    # 3. Spoken dialogue: [Speaker] Name (Emotion):
+    spoken_match = re.search(
+        r"\[Speaker\]\s*([^:\n]+?)\s*:",
+        audio_desc,
+        re.IGNORECASE,
+    )
+    if spoken_match:
+        block = spoken_match.group(1).strip()
+        clean_speaker = re.sub(r"\s*\([^)]*\)", "", block).strip()
+        em = re.findall(r"\(([^)]+)\)", block)
+        raw_em = em[-1].strip() if em else ""
+        emotion = "" if re.search(r"\b(cat|human|boy|girl|man|woman)\b", raw_em.lower()) else raw_em
+        return {
+            "speaker": block,
+            "is_thought": False,
+            "emotion": emotion,
+            "clean_speaker": clean_speaker,
+        }
+
+    return {"speaker": "", "is_thought": False, "emotion": "", "clean_speaker": ""}
+
+
+def format_attributed_subtitle(text: str, audio_desc: str) -> str:
+    """Format subtitle line with clean speaker attribution to avoid dialogue confusion across characters."""
+    clean_text = (text or "").strip()
+    if not clean_text:
+        return ""
+    if re.match(r"^(\([^)]+\):|[A-Za-z0-9_\s\.\-'\u00C0-\u1EF9]+:)", clean_text):
+        return clean_text
+
+    info = extract_speaker_and_dialogue_info(audio_desc)
+    spk = info.get("clean_speaker", "").strip()
+    if not spk:
+        return clean_text
+
+    inner = clean_text.strip("\"'“”")
+    if info.get("is_thought"):
+        return f"({spk}): \"{inner}\""
+    else:
+        return f"{spk}: \"{inner}\""
+
+
+def extract_vietsubs_from_shots(shot_descriptions: List[Any], include_attribution: bool = True) -> Dict[int, str]:
+    """Extract inline `(Vietsub: ...)` lines stored inside ShotDescription.audio_desc with speaker attribution."""
     extracted: Dict[int, str] = {}
     inline_re = re.compile(r"\(\s*Vietsub\s*:\s*([^)]+?)\s*\)", re.IGNORECASE)
     line_re = re.compile(r"^\s*Vietsub\s*:\s*(.+?)\s*$", re.IGNORECASE | re.MULTILINE)
@@ -417,7 +509,11 @@ def extract_vietsubs_from_shots(shot_descriptions: List[Any]) -> Dict[int, str]:
             parts = [m.group(1).strip() for m in line_re.finditer(audio_desc) if m.group(1).strip()]
         if parts:
             sd_idx = getattr(sd, "idx", i)
-            extracted[int(sd_idx)] = " ".join(parts)
+            raw_sub = " ".join(parts)
+            if include_attribution:
+                extracted[int(sd_idx)] = format_attributed_subtitle(raw_sub, audio_desc)
+            else:
+                extracted[int(sd_idx)] = raw_sub
     return extracted
 
 
@@ -486,6 +582,9 @@ def build_subtitle_cues(
             or translated_dialogues.get(i)
             or ""
         ).strip()
+        if text:
+            audio_desc = str(getattr(sd, "audio_desc", "") or "")
+            text = format_attributed_subtitle(text, audio_desc)
 
         if text and shot_len > 0.25:
             lead = min(0.20, shot_len * 0.1)
@@ -725,8 +824,9 @@ async def translate_subtitles_with_chat_model(
 
     payload = {str(k): v for k, v in lines.items()}
     prompt = (
-        f"Translate the following numbered anime/film dialogue lines naturally into {target_language} for on-screen subtitles. "
-        "Keep them concise, vivid, and conversational. Preserve exact JSON keys and return ONLY valid JSON.\n\n"
+        f"Translate the following numbered anime/film dialogue lines naturally into {target_language} for professional on-screen subtitles. "
+        "Follow standard anime fansubbing/localization norms: translate idioms naturally into idiomatic phrasing rather than word-for-word literal phrasing (e.g. translate urgent rescue/panic phrases dynamically and naturally). "
+        "Keep them concise, vivid, punchy, and conversational. Preserve exact JSON keys and return ONLY valid JSON.\n\n"
         f"{json.dumps(payload, ensure_ascii=False, indent=2)}"
     )
     try:

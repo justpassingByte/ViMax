@@ -59,6 +59,37 @@ The user will provide the following input.
   - Maintain consistent 180-degree screen direction and battle damage across consecutive fight shots: set `continuity_from_prev=True` when Shot N directly picks up the momentum, pose trajectory, battle state, or lighting from Shot N-1's ending state.
   - Use explicit transitions: `transition_in="fade_black"` on major time/location switches (e.g., storm night -> quiet dawn alley), `"crossfade"` for soft flashbacks or warm emotional closes, and `"cut"` within continuous action.
   - Use `target_duration_sec` (`3.5` to `5.0`) on silent kinetic action hits/dodges/reaction flashes for crisp anime tempo; leave `target_duration_sec=None` on shots containing spoken dialogue, narration, or calm establishing beats so voices never speed up or clip.
+- Character Staging & Rescue Exclusivity:
+  - In rescue, intervention, or hazard sequences: The victim in danger MUST be staged alone in the hazard zone until the rescuer arrives. NEVER draw duplicate clones of characters or extra bystanders in the danger path.
+  - When a character is shopping, walking, or doing a solo activity, keep focus strictly on that character. Do NOT add extraneous generic shop clerks or clones that could be confused with main characters.
+- Anime World-Building, Environmental Visuals & Cinematic Breathing Room (Beyond 1:1 Motion Comics):
+  - NEVER simply convert comic panels 1:1 into literal motion shots. That produces a boring, flat motion comic! A true high-budget anime adaptation (e.g. Ufotable, MAPPA, Bones) enriches the story with cinematic atmosphere:
+    * **Atmospheric Cityscapes & Environmental B-Roll**:
+      - Interleave character moments with rich environmental visuals: sweeping sunset city skylines, golden light reflecting on skyscraper glass, power lines against twilight skies, distant traffic hum with glowing red taillights, wind blowing through autumn trees, puddles reflecting streetlamps in quiet alleyways.
+      - Use these world-building shots between dialogue and action to establish geography, build suspense, and give the world scale and depth.
+    * **Flashbacks & Memory Treatment (Hồi tưởng & Ký ức)**:
+      - Whenever a scene delves into a past memory or inner reflection, tag `[AnimeFX: Flashback]` (applies nostalgic sepia/monochrome color grading, soft dreamy bloom, and gentle edge vignette).
+      - Use `transition_in="white_flash"` for sudden memory awakenings or `"crossfade"` for gentle emotional dissolves.
+    * **Dramatic Focus & Cinematic Widescreen**:
+      - For shocking revelations or extreme eye reactions, tag `[AnimeFX: DramaticFocus]` to spotlight the character's expression while dimming the background.
+      - For climactic combat standoffs or life-or-death confrontations, tag `[AnimeFX: Letterbox]` for 2.39:1 widescreen cinema bars.
+    * **Cinematic Breathing Room & Full Pacing**:
+      - Let establishing shots and character dialogues play with full breathing room (~6.0–8.0 seconds). NEVER compress shots into frantic 2-second fragments that discard dialogue tails or atmospheric pauses.
+- Anime Visual Effects & High-Speed Action Staging (Sakuga VFX):
+  - Anime Frame Skip & Visual Ellipsis (Tỉnh lược khung hình):
+    * NEVER attempt to realistically simulate complex contact physics (lifting a person while running, mid-stride scooping, clumsy grappling) in video prompts — diffusion models will warp limbs, produce multiple arms, and create awkward slow-motion jogging.
+    * Instead, direct authentic Japanese anime action shorthand (Frame Skip / Ellipsis):
+      1. Anticipation & Ignition: Coiled launch pose, sparking eyes/aura, sudden tension.
+      2. Frame Skip & Speed Streak: Tag `[AnimeFX: FrameSkip]` + `[AnimeFX: SpeedStreak]` (or `[AnimeFX: Vanish]`). The screen blurs into directional energy streaks and residual lightning/smoke (`vệt tốc độ / vệt hiệu ứng`), and the subjects vanish or cut past in a blinding flash.
+      3. Reaction / Impact: Tag `[AnimeFX: SpeedLines]` + `[AnimeFX: ScreenShake]`. The vehicle/hazard violently screeches past the EMPTY danger zone.
+      4. Touchdown / Resolution: Cut directly to the characters ALREADY kneeling safely on the sidewalk/ground, holding the victim tight as residual sparks fade out.
+    * Clash / Sonic Boom: Tag `[AnimeFX: Impact]` (sakuga monochrome flash) + `[AnimeFX: ScreenShake]`.
+    * Critical Tension: Tag `[AnimeFX: SlowMo]` (bullet-time dilation) before explosive action snaps.
+- Dialogue Attribution & Lip-Sync Integrity:
+  - In shots with multiple characters present, clearly denote the SINGLE active speaking character: `[Speaker] <CharacterName> (<Emotion>): '<Line>'` or `[Thought] <CharacterName> (<Emotion>): '<Line>'`.
+  - All non-speaking characters present in the frame must be explicitly described as listening or reacting silently with closed lips, preventing dialogue confusion.
+- Spatial Continuity & Environmental Consistency:
+  - All shots within the same scene must take place in the exact same physical location and lighting conditions. Camera angles may change, but the architectural background, walls, floor, props, and atmosphere must remain strictly coherent.
 - CRITICAL JSON FORMATTING & VIETSUB RULE:
   - Wrap the valid JSON output inside a ```json fenced code block. Inside JSON string values, quote spoken lines with single quotes `'...'` (or properly escaped `\"`) and NEVER leave raw unescaped double quotes inside strings.
   - Whenever `<SCRIPT>` includes a `(Vietsub: ...)` line for a beat or dialogue, ALWAYS preserve `(Vietsub: ...)` verbatim inside that shot's `audio_desc` right after the dialogue/thought line.

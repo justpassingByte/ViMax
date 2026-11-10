@@ -260,6 +260,229 @@ def _load_character_seed_refs(working_dir: str | Path) -> Dict[str, List[str]]:
     return result
 
 
+def _resolve_character_acoustic_profile(speaker: str, characters_data: List[Any]) -> Dict[str, str]:
+    """Generically resolve a character's acoustic profile, age group, vocal timbre, and negative constraints."""
+    spk_raw = (speaker or "").strip()
+    spk_clean = re.sub(r"\s*\([^)]*\)", "", spk_raw).strip()
+    if not spk_clean:
+        return {
+            "clean_speaker": "Character",
+            "profile": "Clear expressive Japanese anime voice actor matching scene context.",
+            "negatives": "Strictly clean studio recording, no robotic or synthetic artifacts."
+        }
+
+    char_match = None
+    for c in (characters_data or []):
+        if isinstance(c, dict):
+            ident = c.get("identifier_in_scene", "")
+            static_feat = c.get("static_features", "")
+            dyn_feat = c.get("dynamic_features", "") or ""
+        else:
+            ident = getattr(c, "identifier_in_scene", "")
+            static_feat = getattr(c, "static_features", "")
+            dyn_feat = getattr(c, "dynamic_features", "") or ""
+
+        ident_clean = re.sub(r"\s*\([^)]*\)", "", ident).strip()
+        if spk_raw.lower() == ident.lower() or spk_clean.lower() == ident_clean.lower():
+            char_match = (ident, static_feat, dyn_feat)
+            break
+    if not char_match:
+        for c in (characters_data or []):
+            if isinstance(c, dict):
+                ident = c.get("identifier_in_scene", "")
+                static_feat = c.get("static_features", "")
+                dyn_feat = c.get("dynamic_features", "") or ""
+            else:
+                ident = getattr(c, "identifier_in_scene", "")
+                static_feat = getattr(c, "static_features", "")
+                dyn_feat = getattr(c, "dynamic_features", "") or ""
+
+            ident_clean = re.sub(r"\s*\([^)]*\)", "", ident).strip()
+            if ident_clean.lower() in spk_clean.lower() or spk_clean.lower() in ident_clean.lower():
+                char_match = (ident, static_feat, dyn_feat)
+                break
+
+    desc = ""
+    if char_match:
+        desc = f"{char_match[1]} {char_match[2]}".lower()
+
+    is_narrator = any(w in spk_clean.lower() or w in desc for w in ["narrator", "người dẫn chuyện", "narration"])
+    is_woman = any(w in spk_clean.lower() or w in desc for w in ["woman", "mother", "female", "girl", "mẹ", "bà", "cô"])
+    is_child = (not is_woman) and (any(w in desc for w in ["elementary", "child", "small young", "6-7", "kid"]) or (bool(re.search(r"\bhojin\b", spk_clean.lower())) and not is_woman))
+    is_teen = (not is_woman) and (not is_child) and (any(w in desc for w in ["teen", "high school", "16", "17", "young boy"]) or "jiwoo" in spk_clean.lower())
+    is_man = (not is_woman) and (not is_child) and (not is_teen) and (any(w in desc for w in ["man", "male", "athletic build", "trench coat"]) or "kayden" in spk_clean.lower())
+
+    if is_narrator:
+        profile = "Authoritative resonant Japanese anime narrator baritone. Calm, cinematic, neutral."
+        neg = "Strictly NO casual dialogue tone, NO emotional bias."
+    elif is_woman:
+        profile = "Gentle adult woman (~30-35 years old), warm, natural, emotional Japanese female voice."
+        neg = "Strictly NOT male voice, NOT robotic, NOT high-pitched squeak."
+    elif is_child:
+        profile = "Young elementary school boy (~6-7 years old), innocent, clear young child anime voice."
+        neg = "Strictly NO deep adult male voice, NO teenage voice, NO mature female tone."
+    elif is_teen:
+        profile = "16-year-old teenage boy (high school male), youthful, clear, earnest anime boy voice. Emotional and expressive."
+        neg = "Strictly NOT female voice, NOT baby/toddler voice, NOT old man voice, NOT robot."
+    elif is_man or "kayden" in spk_clean.lower():
+        profile = "Powerful awakened adult male in his late 20s, deep resonant authoritative Japanese anime male baritone. Confident, charismatic, proud."
+        neg = "Strictly NOT female voice, NOT high-pitched baby/child voice, NOT generic cartoon meow."
+    else:
+        profile = "Clear expressive Japanese anime voice actor matching scene context."
+        neg = "Strictly clean studio recording, no robotic or synthetic artifacts."
+
+    return {
+        "clean_speaker": spk_clean,
+        "profile": profile,
+        "negatives": neg,
+    }
+
+
+def _format_video_prompt_audio(
+    clean_audio_desc: str,
+    characters_data: List[Any],
+    timing_note: str = "",
+) -> str:
+    """Format dialogue into structured, hallucination-proof audio & vocal profile specifications."""
+    if not clean_audio_desc or not clean_audio_desc.strip():
+        return ""
+
+    sfx_match = re.findall(r"\[Sound\s*Effect\]\s*([^\[\n]+)", clean_audio_desc, re.IGNORECASE)
+    sfx_text = ", ".join(s.strip() for s in sfx_match if s.strip())
+
+    narrator_match = re.search(
+        r"\[(?:Speaker|Off-screen.*?Voiceover)\]\s*(?:Người Dẫn Chuyện|Narrator)\s*(?:\([^)]*\))?\s*:\s*(?:'|\")?([^'\"]+)(?:'|\")?",
+        clean_audio_desc,
+        re.IGNORECASE,
+    )
+    if narrator_match:
+        line = narrator_match.group(1).strip()
+        prof = _resolve_character_acoustic_profile("Narrator", characters_data)
+        out = [
+            "[Audio & Voiceover Track ONLY - Spoken Japanese Narration & SFX, No On-screen Subtitles]",
+            f"- Active Speaker: Narrator",
+            f"- Vocal Acoustic Profile: {prof['profile']}",
+            f"- Acoustic Rules: {prof['negatives']} All visible characters remain completely silent.",
+            f"- Narration Line: '{line}'",
+        ]
+        if sfx_text:
+            out.append(f"- Sound Effects: {sfx_text}")
+        if timing_note:
+            out.append(timing_note.strip())
+        return "\n".join(out)
+
+    thought_match = re.search(
+        r"\[(?:Thought|Inner\s*Monologue)\]\s*([^:\n]+?)\s*:\s*(?:'|\")?([^'\"]+)(?:'|\")?",
+        clean_audio_desc,
+        re.IGNORECASE,
+    )
+    if not thought_match:
+        thought_match = re.search(
+            r"\[Speaker\]\s*([^:\n]+?)\s*\(([^)]*inner\s*monologue[^)]*)\)\s*:\s*(?:'|\")?([^'\"]+)(?:'|\")?",
+            clean_audio_desc,
+            re.IGNORECASE,
+        )
+    if not thought_match:
+        thought_match = re.search(
+            r"\[Off-screen\s+Japanese\s+Inner\s+Monologue\s+Voiceover\s+of\s+([^:\]\n]+?)\]\s*:\s*(?:'|\")?([^'\"]+)(?:'|\")?",
+            clean_audio_desc,
+            re.IGNORECASE,
+        )
+    if thought_match:
+        speaker_block = thought_match.group(1).strip()
+        line = thought_match.group(thought_match.lastindex).strip() if thought_match.lastindex else ""
+        prof = _resolve_character_acoustic_profile(speaker_block, characters_data)
+        out = [
+            "[Audio & Voiceover Track ONLY - Spoken Japanese Inner Monologue & SFX, No On-screen Subtitles]",
+            f"- Active Speaker: {prof['clean_speaker']}",
+            f"- Vocal Acoustic Profile: {prof['profile']}",
+            f"- Delivery Mode: Off-screen inner monologue voiceover (character lips remain completely closed, subtle introspective resonance).",
+            f"- Acoustic Rules: {prof['negatives']} Only {prof['clean_speaker']}'s internal voice is heard. Visible character lips stay closed. No other character speaks.",
+            f"- Spoken Line: '{line}'",
+        ]
+        if sfx_text:
+            out.append(f"- Sound Effects: {sfx_text}")
+        if timing_note:
+            out.append(timing_note.strip())
+        return "\n".join(out)
+
+    spoken_match = re.search(
+        r"\[Speaker\]\s*([^:\n]+?)\s*:\s*(?:'|\")?([^'\"]+)(?:'|\")?",
+        clean_audio_desc,
+        re.IGNORECASE,
+    )
+    if spoken_match:
+        speaker_block = spoken_match.group(1).strip()
+        em = re.findall(r"\(([^)]+)\)", speaker_block)
+        raw_em = em[-1].strip() if em else ""
+        emotion = "" if re.search(r"\b(cat|human|boy|girl|man|woman)\b", raw_em.lower()) else raw_em
+        line = spoken_match.group(spoken_match.lastindex).strip() if spoken_match.lastindex else ""
+        prof = _resolve_character_acoustic_profile(speaker_block, characters_data)
+        out = [
+            "[Audio & Spoken Japanese Dialogue Track ONLY - Studio Anime Voice Acting, No On-screen Subtitles]",
+            f"- Active Speaker: {prof['clean_speaker']}" + (f" ({emotion})" if emotion else ""),
+            f"- Vocal Acoustic Profile: {prof['profile']}",
+            f"- Delivery Mode: Spoken dialogue (expressive, natural dialogue pacing, lips move in sync).",
+            f"- Acoustic Rules: {prof['negatives']} Only {prof['clean_speaker']} speaks. All other characters in the shot remain completely silent.",
+            f"- Spoken Line: '{line}'",
+        ]
+        if sfx_text:
+            out.append(f"- Sound Effects: {sfx_text}")
+        if timing_note:
+            out.append(timing_note.strip())
+        return "\n".join(out)
+
+    if sfx_text or clean_audio_desc:
+        out = [
+            "[Audio & Sound Effects Track ONLY - No Spoken Dialogue, No On-screen Subtitles]",
+            f"- Sound Effects & Ambient: {clean_audio_desc}",
+            "- Acoustic Rules: Pure Foley and environmental sound effects. No random speech, no human vocal chatter.",
+        ]
+        return "\n".join(out)
+
+    return ""
+
+
+def _ensure_character_portraits_and_spatial_anchors(
+    pairs: List[Tuple[str, str]],
+    visible_characters: List[Any],
+    character_portraits_registry: Optional[Dict[str, Dict[str, Dict[str, str]]]] = None,
+    scene_anchor_pair: Optional[Tuple[str, str]] = None,
+    limit: int = 8,
+) -> List[Tuple[str, str]]:
+    """Guarantees that canonical portraits for all visible characters and the scene establishing anchor are present."""
+    pairs = list(pairs or [])
+    existing_paths = {p[0] for p in pairs}
+
+    if character_portraits_registry and visible_characters:
+        for char in visible_characters:
+            if not getattr(char, "is_visible", True):
+                continue
+            ident = getattr(char, "identifier_in_scene", "")
+            reg = character_portraits_registry.get(ident) or {}
+            char_portrait_paths = {v["path"] for v in reg.values() if isinstance(v, dict) and "path" in v}
+            if not char_portrait_paths.intersection(existing_paths):
+                chosen = (
+                    reg.get("front")
+                    or reg.get("front_three_quarter")
+                    or reg.get("side")
+                    or next(iter(reg.values()), None)
+                )
+                if chosen and isinstance(chosen, dict) and os.path.exists(chosen.get("path", "")):
+                    p_path = chosen["path"]
+                    p_desc = f"Canonical character portrait reference for <{ident}>: maintain exact facial features, hairstyle, hair color, eye shape, and costume."
+                    pairs.insert(0, (p_path, p_desc))
+                    existing_paths.add(p_path)
+
+    if scene_anchor_pair and scene_anchor_pair[0] and os.path.exists(scene_anchor_pair[0]):
+        if scene_anchor_pair[0] not in existing_paths:
+            insert_idx = min(len(visible_characters or []), len(pairs))
+            pairs.insert(insert_idx, scene_anchor_pair)
+            existing_paths.add(scene_anchor_pair[0])
+
+    return _dedupe_image_text_pairs(pairs, limit=limit)
+
+
 class Script2VideoPipeline:
 
     def __init__(
@@ -1038,8 +1261,25 @@ class Script2VideoPipeline:
                     print(f"☑️ Selected reference images and generated prompt for first_frame of shot {first_shot_idx}, saved to {ff_selector_output_path}.")
                     _emit_render_progress(progress, "frame_prompt_done", f"Selected references for first frame of shot {first_shot_idx}", {"camera_idx": camera.idx, "shot_idx": first_shot_idx, "frame_type": "first_frame", "path": ff_selector_output_path})
 
-                reference_image_path_and_text_pairs, prompt = ff_selector_output["reference_image_path_and_text_pairs"], ff_selector_output["text_prompt"]
-                reference_image_path_and_text_pairs = _dedupe_image_text_pairs(list(reference_image_path_and_text_pairs), limit=8)
+                raw_pairs = ff_selector_output["reference_image_path_and_text_pairs"]
+                prompt = ff_selector_output["text_prompt"]
+                vis_chars = [
+                    char_by_idx[idx]
+                    for idx in first_shot_desc.ff_vis_char_idxs
+                    if idx in char_by_idx and getattr(char_by_idx[idx], "is_visible", True)
+                ]
+                scene_anchor = None
+                scene_shot0_ff = os.path.join(self.working_dir, "shots", "0", "first_frame.png")
+                if os.path.exists(scene_shot0_ff) and first_shot_idx != 0:
+                    scene_anchor = (scene_shot0_ff, "Scene establishing environment anchor: maintain the exact same architectural location, background walls, floor/ground textures, time of day, and lighting atmosphere.")
+
+                reference_image_path_and_text_pairs = _ensure_character_portraits_and_spatial_anchors(
+                    pairs=raw_pairs,
+                    visible_characters=vis_chars,
+                    character_portraits_registry=character_portraits_registry,
+                    scene_anchor_pair=scene_anchor,
+                    limit=8,
+                )
                 prefix_prompt = ""
                 for i, (image_path, text) in enumerate(reference_image_path_and_text_pairs):
                     prefix_prompt += f"Image {i}: {text}\n"
@@ -1192,28 +1432,16 @@ class Script2VideoPipeline:
                 if has_spoken_audio
                 else ""
             )
-            formatted_audio = re.sub(
-                r"\[Speaker\]\s*(?:Người Dẫn Chuyện|Narrator)\s*(?:\([^)]*\))?\s*:",
-                "[Off-screen Japanese Narrator Voiceover ONLY (keep visible characters silent and eyes/mouth matching scene)]:",
-                clean_audio_desc,
-                flags=re.IGNORECASE,
-            )
-            formatted_audio = re.sub(
-                r"\[(?:Thought|Inner\s*Monologue)\]\s*([^:\(\[\n]+?)\s*(?:\(([^)]*)\))?\s*:",
-                lambda m: (
-                    f"[Off-screen Japanese Inner Monologue Voiceover of {m.group(1).strip()}"
-                    + (f" ({m.group(2).strip()})" if m.group(2) and m.group(2).strip() else "")
-                    + " ONLY (keep visible character lips closed)]:"
-                ),
-                formatted_audio,
-                flags=re.IGNORECASE,
-            )
-            formatted_audio = re.sub(
-                r"\[Speaker\]\s*([^:\(\[\n]+?)\s*\(([^)]*inner\s*monologue[^)]*)\)\s*:",
-                lambda m: f"[Off-screen Japanese Inner Monologue Voiceover of {m.group(1).strip()} ({m.group(2).strip()}) ONLY (keep visible character lips closed)]:",
-                formatted_audio,
-                flags=re.IGNORECASE,
-            )
+            characters_data = []
+            chars_json_path = os.path.join(self.working_dir, "characters.json")
+            if os.path.exists(chars_json_path):
+                try:
+                    with open(chars_json_path, "r", encoding="utf-8") as f:
+                        characters_data = json.load(f)
+                except Exception:
+                    characters_data = []
+
+            formatted_audio = _format_video_prompt_audio(clean_audio_desc, characters_data, timing_note)
             if suppress_subs:
                 visual_body = "\n".join(part for part in (keyframe_note, motion_clean) if part).strip()
                 sections = []
@@ -1222,14 +1450,11 @@ class Script2VideoPipeline:
                         f"[Pure Visual Scene - Clean Textless Borderless Animation Only]\n{visual_body}"
                     )
                 if formatted_audio:
-                    sections.append(
-                        f"[Audio & Voiceover Track ONLY - Spoken Japanese Audio & SFX, No Text Shown on Screen]\n{formatted_audio}{timing_note}"
-                    )
+                    sections.append(formatted_audio)
                 video_prompt = "\n\n".join(sections).strip()
             else:
                 visual_body = "\n".join(part for part in (keyframe_note, motion_clean) if part).strip()
-                audio_part = f"{formatted_audio}{timing_note}" if formatted_audio else ""
-                video_prompt = "\n".join(part for part in (visual_body, audio_part) if part).strip()
+                video_prompt = "\n\n".join(part for part in (visual_body, formatted_audio) if part).strip()
             gen_kwargs: Dict[str, Any] = {
                 "prompt": video_prompt,
                 "reference_image_paths": frame_paths,
@@ -1441,8 +1666,15 @@ class Script2VideoPipeline:
                 print(f"☑️ Selected reference images and generated prompt for {frame_type} frame of shot {shot_idx}, saved to {selector_output_path}.")
                 _emit_render_progress(progress, "frame_prompt_done", f"Selected references for {frame_type} of shot {shot_idx}", {"shot_idx": shot_idx, "frame_type": frame_type, "path": selector_output_path})
 
-            reference_image_path_and_text_pairs, prompt = selector_output["reference_image_path_and_text_pairs"], selector_output["text_prompt"]
-            reference_image_path_and_text_pairs = _dedupe_image_text_pairs(list(reference_image_path_and_text_pairs), limit=8)
+            raw_pairs = selector_output["reference_image_path_and_text_pairs"]
+            prompt = selector_output["text_prompt"]
+            reference_image_path_and_text_pairs = _ensure_character_portraits_and_spatial_anchors(
+                pairs=raw_pairs,
+                visible_characters=visible_characters,
+                character_portraits_registry=character_portraits_registry,
+                scene_anchor_pair=first_shot_ff_path_and_text_pair,
+                limit=8,
+            )
             prefix_prompt = ""
             for i, (image_path, text) in enumerate(reference_image_path_and_text_pairs):
                 prefix_prompt += f"Image {i}: {text}\n"

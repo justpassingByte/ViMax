@@ -36,10 +36,10 @@ class ShotBriefDescription(BaseModel):
             None,
         ],
     )
-    transition_in: Literal["cut", "crossfade", "fade_black"] = Field(
+    transition_in: Literal["cut", "crossfade", "fade_black", "white_flash", "whip_pan"] = Field(
         default="cut",
-        description="Editorial transition from the previous shot into this shot: 'cut' for continuous action or sharp impacts, 'crossfade' for gentle emotional/flashback/closing dissolves, 'fade_black' for clear time skips or location shifts.",
-        examples=["cut", "fade_black", "crossfade"],
+        description="Editorial transition from the previous shot into this shot: 'cut' for continuous action or sharp impacts, 'crossfade' for gentle emotional/flashback/closing dissolves, 'fade_black' for clear time skips or location shifts, 'white_flash' for power awakenings, 'whip_pan' for dynamic swish pan angle shifts.",
+        examples=["cut", "fade_black", "crossfade", "white_flash", "whip_pan"],
     )
     continuity_from_prev: bool = Field(
         default=False,
@@ -136,10 +136,10 @@ class ShotDescription(BaseModel):
             None,
         ],
     )
-    transition_in: Literal["cut", "crossfade", "fade_black"] = Field(
+    transition_in: Literal["cut", "crossfade", "fade_black", "white_flash"] = Field(
         default="cut",
-        description="Editorial transition from the previous shot into this shot: 'cut', 'crossfade', or 'fade_black'.",
-        examples=["cut", "fade_black", "crossfade"],
+        description="Editorial transition from the previous shot into this shot: 'cut', 'crossfade', 'fade_black', or 'white_flash'.",
+        examples=["cut", "fade_black", "crossfade", "white_flash"],
     )
     continuity_from_prev: bool = Field(
         default=False,
