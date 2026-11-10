@@ -733,10 +733,12 @@ class Script2VideoPipeline:
         _emit_render_progress(progress, "camera_tree_ready", "Camera tree ready", {"camera_count": len(camera_tree)})
 
         self._active_shot_descriptions = shot_descriptions
+        self.frame_events = {}
         for sd in shot_descriptions:
-            ev_map = self.frame_events.setdefault(sd.idx, {"first_frame": asyncio.Event()})
+            ev_map = {"first_frame": asyncio.Event()}
             if shot_requires_last_frame(shot_descriptions, sd):
-                ev_map.setdefault("last_frame", asyncio.Event())
+                ev_map["last_frame"] = asyncio.Event()
+            self.frame_events[sd.idx] = ev_map
 
         priority_shot_idxs = _collect_priority_shot_idxs(camera_tree)
         _emit_render_progress(progress, "frames_start", "Generating frames for cameras", {"camera_count": len(camera_tree), "shot_count": len(shot_descriptions)})
@@ -1120,7 +1122,8 @@ class Script2VideoPipeline:
         if prev_shot is None:
             return None
         prev_events = self.frame_events.get(prev_shot.idx, {})
-        if "last_frame" in prev_events:
+        prev_needs_lf = shot_requires_last_frame(shot_descriptions, prev_shot)
+        if prev_needs_lf and "last_frame" in prev_events:
             await prev_events["last_frame"].wait()
             candidate_path = os.path.join(self.working_dir, "shots", f"{prev_shot.idx}", "last_frame.png")
             prev_text = prev_shot.lf_desc or prev_shot.visual_desc
@@ -1407,9 +1410,9 @@ class Script2VideoPipeline:
             _emit_render_progress(progress, "video_clip_waiting_for_frames", f"Waiting for frames before video clip {shot_description.idx}", {"shot_idx": shot_description.idx})
             await self.frame_events[shot_description.idx]["first_frame"].wait()
             shot_ev_map = self.frame_events.get(shot_description.idx, {})
-            needs_last_frame = (
-                "last_frame" in shot_ev_map
-                or shot_requires_last_frame(getattr(self, "_active_shot_descriptions", None) or [shot_description], shot_description)
+            needs_last_frame = shot_requires_last_frame(
+                getattr(self, "_active_shot_descriptions", None) or [shot_description],
+                shot_description,
             )
             if needs_last_frame and "last_frame" in shot_ev_map:
                 await shot_ev_map["last_frame"].wait()
@@ -1952,10 +1955,12 @@ class Script2VideoPipeline:
 
         shot_descriptions = await asyncio.gather(*tasks)
         self._active_shot_descriptions = shot_descriptions
+        self.frame_events = {}
         for sd in shot_descriptions:
-            ev_map = self.frame_events.setdefault(sd.idx, {"first_frame": asyncio.Event()})
+            ev_map = {"first_frame": asyncio.Event()}
             if shot_requires_last_frame(shot_descriptions, sd):
-                ev_map.setdefault("last_frame", asyncio.Event())
+                ev_map["last_frame"] = asyncio.Event()
+            self.frame_events[sd.idx] = ev_map
         return shot_descriptions
 
 
@@ -1985,14 +1990,10 @@ class Script2VideoPipeline:
 
         self.shot_desc_events.setdefault(shot_brief_description.idx, asyncio.Event()).set()
 
-        if shot_description.variation_type in ["medium", "large"]:
-            self.frame_events[shot_brief_description.idx] = {
-                "first_frame": asyncio.Event(),
-                "last_frame": asyncio.Event(),
-            }
-        else:
-            self.frame_events[shot_brief_description.idx] = {
-                "first_frame": asyncio.Event(),
-            }
+        needs_lf = shot_requires_last_frame([shot_description], shot_description)
+        ev_map = {"first_frame": asyncio.Event()}
+        if needs_lf:
+            ev_map["last_frame"] = asyncio.Event()
+        self.frame_events[shot_brief_description.idx] = ev_map
 
         return shot_description

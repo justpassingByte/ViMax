@@ -391,6 +391,65 @@ class Script2VideoPipelineGuardTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(len(burn_calls), 1)
             self.assertEqual(Path(second_result).resolve(), subtitled_fallback.resolve())
 
+    async def test_frame_events_and_continuity_no_deadlock_on_speedstreak_shot(self):
+        import asyncio
+        with tempfile.TemporaryDirectory() as tmp:
+            pipeline = Script2VideoPipeline(chat_model=object(), image_generator=object(), video_generator=object(), working_dir=tmp)
+            shots = [
+                ShotDescription(
+                    idx=0,
+                    is_last=False,
+                    cam_idx=0,
+                    visual_desc="Speed streak across sky [AnimeFX: SpeedStreak] [AnimeFX: Vanish]",
+                    variation_type="medium",
+                    variation_reason="moving streak",
+                    ff_desc="streak in sky",
+                    ff_vis_char_idxs=[],
+                    lf_desc="streak lower in sky",
+                    lf_vis_char_idxs=[],
+                    motion_desc="streak falls",
+                    audio_desc="whoosh",
+                    continuity_from_prev=False,
+                ),
+                ShotDescription(
+                    idx=1,
+                    is_last=True,
+                    cam_idx=1,
+                    visual_desc="Ground shot continuing impact",
+                    variation_type="large",
+                    variation_reason="impact",
+                    ff_desc="ground crater",
+                    ff_vis_char_idxs=[],
+                    lf_desc="crater smoke",
+                    lf_vis_char_idxs=[],
+                    motion_desc="impact burst",
+                    audio_desc="boom",
+                    continuity_from_prev=True,
+                ),
+            ]
+            pipeline.frame_events = {}
+            for sd in shots:
+                from pipelines.script2video_pipeline import shot_requires_last_frame
+                ev_map = {"first_frame": asyncio.Event()}
+                if shot_requires_last_frame(shots, sd):
+                    ev_map["last_frame"] = asyncio.Event()
+                pipeline.frame_events[sd.idx] = ev_map
+
+            # Shot 0 is speedstreak -> must NOT require last_frame
+            self.assertNotIn("last_frame", pipeline.frame_events[0])
+
+            # Simulate Shot 0 first_frame completed
+            shot0_ff = Path(tmp) / "shots" / "0" / "first_frame.png"
+            shot0_ff.parent.mkdir(parents=True, exist_ok=True)
+            shot0_ff.write_bytes(b"fake-png-data")
+            pipeline.frame_events[0]["first_frame"].set()
+
+            # Shot 1 resolves continuity from Shot 0 -> should resolve instantly without waiting for non-existent last_frame
+            cont_pair = await asyncio.wait_for(pipeline._resolve_continuity_reference(shots, 1), timeout=1.0)
+            self.assertIsNotNone(cont_pair)
+            self.assertEqual(cont_pair[0], str(shot0_ff))
+
+
 
 if __name__ == "__main__":
     unittest.main()
