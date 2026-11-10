@@ -49,7 +49,7 @@ def test_sakuga_frame_skip_auto_correction():
     assert "running across the street carrying" not in corrected.visual_desc
     assert "[AnimeFX: FrameSkip]" in corrected.visual_desc
     assert "[AnimeFX: SpeedStreak]" in corrected.visual_desc
-    assert corrected.target_duration_sec == 2.5
+    assert corrected.target_duration_sec == 1.5
 
 
 def test_duplicate_victim_elimination():
@@ -137,4 +137,4 @@ def test_shot_description_scrubbing():
 
     assert "carrying while running" not in scrubbed.lf_desc
     assert "slowly jogging while holding" not in scrubbed.motion_desc
-    assert "blurs in a directional supersonic lightning streak" in scrubbed.motion_desc
+    assert "blurs in a directional supersonic wind rush" in scrubbed.motion_desc

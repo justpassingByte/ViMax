@@ -86,15 +86,18 @@ The user will provide the following input.
   - **Shinkai / Kyoto Animation Preset (Breathing / Walking / City Atmosphere)**:
     For peaceful transitions, neighborhood walks, and environmental atmosphere, describe: *Makoto Shinkai / KyoAni aesthetic, warm amber sunset glow, glass reflections on storefronts, purple-orange dusk sky, power lines, soft detailed background painting*.
   - **Ufotable / MAPPA Sakuga Preset (Action / Superhuman Combat)**:
-    For battles, super-speed dashes, and awakening moments, describe: *Ufotable / MAPPA sakuga action style, sharp crisp cel shading, high contrast, blazing electric energy particle aura, luminous rim lighting*.
+    For battles, super-speed dashes, and awakening moments, describe: *Ufotable / MAPPA sakuga action style, sharp crisp cel shading, high contrast, luminous rim lighting, dynamic motion blur*.
 - Anime Visual Effects & High-Speed Action Staging (Sakuga VFX):
-  - Anime Frame Skip & Visual Ellipsis (Tỉnh lược khung hình):
-    * NEVER attempt to realistically simulate complex contact physics (lifting a person while running, mid-stride scooping, clumsy grappling) in video prompts — diffusion models will warp limbs, produce multiple arms, and create awkward slow-motion jogging.
-    * Instead, direct authentic Japanese anime action shorthand (4-Phase Sakuga Grammar):
-      1. **Pha 1 (Anticipation / Power Coiling)**: Coiled launch pose, sparking eyes/aura, sudden tension (`[AnimeFX: ActionBurst]`). Duration: ~3.5s.
-      2. **Pha 2 (Frame Skip & Speed Streak)**: Tag `[AnimeFX: FrameSkip]` + `[AnimeFX: SpeedStreak]` (or `[AnimeFX: Vanish]`). The screen blurs into directional energy streaks and residual lightning/smoke (`vệt tốc độ / vệt hiệu ứng`), and the subjects vanish in a single frame. Duration: ~2.5s.
-      3. **Pha 3 (Empty Impact / Near-Miss Momentum)**: Tag `[AnimeFX: SpeedLines]` + `[AnimeFX: ScreenShake]`. The vehicle/hazard violently screeches past the completely EMPTY danger zone with smoking skid marks. Duration: ~4.0s.
-      4. **Pha 4 (Touchdown & Safe Aftermath)**: Cut directly to the characters ALREADY kneeling safely on the sidewalk/ground, holding the victim tight as residual sparks fade out. Duration: full ~6.0s–8.0s for relief dialogue.
+  - **Canon Lore Attribute Integrity**:
+    * In early Eleceed (Episode 1), Seo Jiwoo possesses ONLY raw superhuman speed, wind pressure, and supersonic momentum; he has ZERO electric or lightning powers (Lightning belongs exclusively to Kayden Break). Do NOT add lightning sparks or elaborate Dragon Ball-style energy charging for Jiwoo.
+    * Jiwoo does not even know how to control his powers yet—his rescue dash is pure split-second adrenaline instinct!
+  - Anime Frame Skip & Visual Ellipsis (Tỉnh lược khung hình & Nhịp độ Kinetic):
+    * Action and hazard shots must be fast and snappy (1.5s–2.5s), NEVER lingering for 8 seconds which makes fast vehicles look frozen!
+    * Direct authentic Japanese anime action shorthand (4-Phase Sakuga Grammar):
+      1. **Pha 1 (Instinctive Push-off / Sudden Spring)**: Sudden adrenaline reflex, shoe rubber kicking off the asphalt, sudden shockwave burst of wind blowing dust and hair (`[AnimeFX: ActionBurst]`). Duration: ~1.8s.
+      2. **Pha 2 (Frame Skip & Speed Streak)**: Tag `[AnimeFX: FrameSkip]` + `[AnimeFX: SpeedStreak]` (or `[AnimeFX: Vanish]`). The screen blurs into directional sonic air blur and clear wind streaks (`vệt tốc độ / vệt áp lực gió`), and the subjects vanish in a single frame. Duration: ~1.5s.
+      3. **Pha 3 (Empty Impact / Near-Miss Momentum)**: Tag `[AnimeFX: SpeedLines]` + `[AnimeFX: ScreenShake]`. The vehicle violently screeches past the completely EMPTY danger zone with smoking skid marks. Duration: ~2.5s.
+      4. **Pha 4 (Touchdown & Safe Aftermath)**: Cut directly to the characters ALREADY kneeling safely on the sidewalk/ground, holding the victim tight as wind and dust settle. Duration: full ~6.0s–8.0s for relief dialogue.
     * Clash / Sonic Boom: Tag `[AnimeFX: Impact]` (sakuga monochrome flash) + `[AnimeFX: ScreenShake]`.
     * Critical Tension: Tag `[AnimeFX: SlowMo]` (bullet-time dilation) before explosive action snaps.
 - Dialogue Attribution & Lip-Sync Integrity:

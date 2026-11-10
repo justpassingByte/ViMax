@@ -223,7 +223,7 @@ def resolve_and_apply_anime_fx(clip: Any, sd: Any, extra_clips: Optional[List[An
         # 8b. Frame Skip / Speed Streak Ellipsis (skips difficult physical motion with high-speed blur & energy trail)
         if re.search(r"\[(?:AnimeFX:\s*)?(?:FrameSkip|Frame_Skip|SpeedStreak|Speed_Streak|V[eệ]t(?:TocDo|HieuUng)|V[eệ]t\s*t[oố]c\s*đ[oộ])\]", combined_desc, re.IGNORECASE):
             t_skip = min(1.2, dur * 0.35)
-            c = apply_anime_frame_skip_streak(c, trigger_time_sec=t_skip, duration=0.40)
+            c = apply_anime_frame_skip_streak(c, trigger_time_sec=t_skip, duration=0.40, streak_color=(255, 255, 255))
             if extra_clips is not None:
                 extra_clips.append(c)
 
@@ -306,8 +306,24 @@ def compose_timeline_clips(
         sd = shot_descriptions[i] if i < len(shot_descriptions) else None
         raw_dur = float(getattr(clip, "duration", None) or 8.0)
 
-        # Keep full natural duration - do NOT trim or cut clips in half!
+        target_dur = getattr(sd, "target_duration_sec", None) if sd else None
+        aud = str(getattr(sd, "audio_desc", "") or "") if sd else ""
+        has_dialogue = bool(re.search(r"\[(?:Speaker|Thought)\]", aud, re.IGNORECASE))
+
         active_clip = clip
+        # Speed up action/movement shots to target_duration_sec when there is NO spoken dialogue!
+        # Prevents speeding cars, sprint launches, or reactions from looking like slow-motion freezes.
+        if target_dur is not None and not has_dialogue and 0.5 <= float(target_dur) < raw_dur:
+            t_dur = float(target_dur)
+            speed_factor = max(1.0, min(4.5, raw_dur / t_dur))
+            try:
+                active_clip = active_clip.with_effects([vfx.MultiplySpeed(speed_factor)])
+                extra_clips.append(active_clip)
+            except Exception as e:
+                logging.warning(f"Failed to speed up clip {i}: {e}")
+                active_clip = active_clip.subclipped(0, min(t_dur, raw_dur))
+                extra_clips.append(active_clip)
+
         active_clip = resolve_and_apply_anime_fx(active_clip, sd, extra_clips)
         paced_clips.append(active_clip)
         durations.append(float(getattr(active_clip, "duration", None) or raw_dur))

@@ -79,41 +79,41 @@ class AnimeDirectorGuard:
         # 1. Detect and eliminate banned physical running / carrying in rescue actions
         for pat in BANNED_ACTION_MOTION_PATTERNS:
             if pat.search(vis):
-                # Auto-correct to Sakuga Frame Skip
+                # Auto-correct to Sakuga Frame Skip (pure sonic wind rush, zero lightning, zero clumsy running)
                 vis = re.sub(
                     pat,
-                    "blurs in a blinding supersonic lightning streak, scooping the victim in a single frame skip, vanishing instantly",
+                    "blurs in a blinding supersonic wind rush and sonic air blur, scooping the victim in a single frame skip, vanishing instantly",
                     vis,
                 )
                 if "[AnimeFX: FrameSkip]" not in vis:
                     vis = f"{vis} [AnimeFX: FrameSkip] [AnimeFX: SpeedStreak] [AnimeFX: Vanish]"
                 if "[AnimeFX: FrameSkip]" not in aud:
                     aud = f"{aud} [AnimeFX: FrameSkip] [AnimeFX: SpeedStreak] [AnimeFX: Vanish]"
-                dur = 2.5
+                dur = 1.8
 
         # 2. Detect and eliminate duplicate victim clones in road hazard beats
         for pat in DUPLICATE_VICTIM_PATTERNS:
             if pat.search(vis):
                 vis = re.sub(pat, "a single young boy chasing a runaway soccer ball into traffic", vis)
 
-        # 3. Superhuman speed / lightning dash auto-tagging and dynamic duration calibration
+        # 3. Superhuman speed / instinctive dash auto-tagging and dynamic duration calibration
         is_speed_action = any(kw in vis.lower() for kw in SUPERHUMAN_SPEED_TRIGGERS)
         if is_speed_action:
-            if any(kw in vis.lower() for kw in ["launch", "sprinter", "crouch", "ignite", "tụ lực", "xuất phát"]):
-                # Pha 1: Anticipation / Power Coiling
+            if any(kw in vis.lower() for kw in ["launch", "sprinter", "crouch", "ignite", "tụ lực", "xuất phát", "instinct", "bản năng"]):
+                # Pha 1: Pure Instinctive Sprint Push (snappy, no elaborate dragon-ball charging)
                 if "[AnimeFX: ActionBurst]" not in vis:
                     vis = f"{vis} [AnimeFX: ActionBurst] [AnimeFX: Chromatic]"
-                dur = 3.5
+                dur = 1.8
             elif any(kw in vis.lower() for kw in ["streak", "blitz", "vanish", "frame skip", "vụt qua", "biến mất"]):
                 # Pha 2: Supersonic Blitz / Frame Skip
                 if "[AnimeFX: FrameSkip]" not in vis:
                     vis = f"{vis} [AnimeFX: FrameSkip] [AnimeFX: SpeedStreak] [AnimeFX: Vanish]"
-                dur = 2.5
+                dur = 1.5
             elif any(kw in vis.lower() for kw in ["skid", "screech", "brakes", "smoke", "empty", "phanh", "trống rỗng"]):
-                # Pha 3: Empty Impact / Momentum
+                # Pha 3: Empty Impact / SUV Momentum
                 if "[AnimeFX: SpeedLines]" not in vis:
                     vis = f"{vis} [AnimeFX: SpeedLines] [AnimeFX: ScreenShake]"
-                dur = 4.0
+                dur = 2.5
             elif any(kw in vis.lower() for kw in ["touchdown", "aftermath", "cradling", "safe", "tiếp đất"]):
                 # Pha 4: Touchdown & Aftermath
                 dur = None  # Full duration for relief dialogue!
@@ -198,19 +198,19 @@ class AnimeDirectorGuard:
             if pat.search(motion):
                 motion = re.sub(
                     pat,
-                    "blurs in a directional supersonic lightning streak, vanishing from the road in a single frame skip",
+                    "blurs in a directional supersonic wind rush and air pressure blur, vanishing from the road in a single frame skip",
                     motion,
                 )
             if pat.search(ff):
                 ff = re.sub(
                     pat,
-                    "coils low at the sidewalk curb, cyan lightning sparks erupting around shoes",
+                    "pushes off the curb on pure adrenaline instinct, sudden blast of wind and dust exploding backward from sneakers, zero lightning",
                     ff,
                 )
             if pat.search(lf):
                 lf = re.sub(
                     pat,
-                    "vanishes into a blinding speed streak, leaving empty road behind",
+                    "vanishes into a blinding sonic speed streak, leaving empty road behind",
                     lf,
                 )
 
