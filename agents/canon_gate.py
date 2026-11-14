@@ -98,7 +98,7 @@ def _build_alias_map(characters: Optional[Sequence[Any]]) -> Dict[str, str]:
                 keys.update(str(v) for v in val)
             elif isinstance(val, str) and val:
                 keys.add(val)
-        # also register a bare first token (e.g. "Kayden" from "Kayden (Human)")
+        # also register a bare first token (e.g. "Alex" from "Alex (Human)")
         bare = re.sub(r"\(.*?\)", "", canonical).strip()
         if bare:
             keys.add(bare)
@@ -113,7 +113,7 @@ def _resolve_character(tag: str, alias_map: Dict[str, str]) -> str:
     norm = _normalize_name(tag)
     if norm in alias_map:
         return alias_map[norm]
-    # fuzzy containment: "<Young Boy Hojin>" -> "Hojin"
+    # fuzzy containment: "<Young Boy Alex>" -> "Alex"
     for alias_norm, canonical in alias_map.items():
         if alias_norm and (alias_norm in norm or norm in alias_norm):
             return canonical
