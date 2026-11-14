@@ -106,6 +106,10 @@ class MangaBeat(BaseModel):
         description="Sound effects depicted on the panel (e.g. 'SPPPPPT!', 'CRACK!', 'MEOW').",
     )
     mood: str = Field(default="", description="Emotional tone / pacing mood of this beat.")
+    beat_type: Optional[Literal[
+        "establishing", "dialogue", "exchange", "reaction",
+        "action", "impact", "reveal", "monologue", "transition",
+    ]] = Field(default=None, description="Narrative/cinematic beat type for rule-based shot planning.")
     is_scene_break: bool = Field(
         default=False,
         description="True when location, time of day, or distinct story scene changes cleanly at the start of this beat.",

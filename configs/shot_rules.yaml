@@ -1,0 +1,74 @@
+# Rule-based shot planning (phase 08, quality.shot_planner).
+# Per beat type: allowed shot sizes / camera angles / movements / fx with weights.
+# No character or series names here — this is generic cinematic grammar.
+
+# Keyword cues used by infer_beat_type for old caches without an explicit beat_type.
+inference:
+  action_keywords: [dash, run, sprint, leap, jump, kick, punch, strike, slash, dodge, throw, charge, swing, grab, rush, chase, fight, blitz, vanish]
+  impact_sfx: [crash, boom, bang, slam, smash, explosion, blast, crack, thud, impact, detonat]
+  reveal_keywords: [reveal, appears, emerges, turns to see, realizes, shock, gasp, discovers, unveils]
+
+variety:
+  max_same_size_angle_run: 2
+  establishing_on_location_change: true
+  dialogue_reverse_after_lines: 4
+  min_distinct_sizes_if_shots_ge: {shots: 6, sizes: 3}
+  max_low_angle_share_non_action: 0.30
+  fx_allowed_beat_types: [action, impact, reveal, monologue]
+  max_coverage_ratio: 0.25
+
+beat_types:
+  establishing:
+    sizes: [{v: extreme_wide, w: 3}, {v: wide, w: 3}, {v: medium, w: 1}]
+    angles: [{v: high, w: 2}, {v: eye, w: 2}, {v: overhead, w: 1}, {v: low, w: 1}]
+    movements: [{v: static, w: 2}, {v: slow_pan, w: 2}, {v: slow_dolly_in, w: 1}]
+    fx: []
+  dialogue:
+    sizes: [{v: medium, w: 3}, {v: medium_close, w: 3}, {v: close, w: 2}]
+    angles: [{v: eye, w: 3}, {v: ots, w: 2}, {v: low, w: 1}]
+    movements: [{v: static, w: 3}, {v: slow_push_in, w: 1}]
+    fx: []
+  exchange:
+    sizes: [{v: medium, w: 2}, {v: medium_close, w: 3}, {v: close, w: 2}]
+    angles: [{v: ots, w: 3}, {v: eye, w: 2}, {v: reverse, w: 2}]
+    movements: [{v: static, w: 3}]
+    fx: []
+  reaction:
+    sizes: [{v: close, w: 3}, {v: extreme_close, w: 2}, {v: medium_close, w: 2}]
+    angles: [{v: eye, w: 3}, {v: low, w: 1}, {v: high, w: 1}]
+    movements: [{v: static, w: 3}, {v: snap_zoom, w: 1}]
+    fx: [{v: dramatic_focus, w: 1}]
+  action:
+    sizes: [{v: wide, w: 2}, {v: medium, w: 3}, {v: close, w: 1}]
+    angles: [{v: low, w: 3}, {v: dutch, w: 2}, {v: eye, w: 1}, {v: overhead, w: 1}]
+    movements: [{v: tracking, w: 3}, {v: whip_pan, w: 2}, {v: handheld, w: 1}]
+    fx: [{v: speed_lines, w: 2}, {v: impact, w: 1}]
+  impact:
+    sizes: [{v: medium, w: 2}, {v: close, w: 2}, {v: wide, w: 2}]
+    angles: [{v: low, w: 3}, {v: dutch, w: 2}, {v: overhead, w: 1}]
+    movements: [{v: shake, w: 3}, {v: snap_zoom, w: 2}]
+    fx: [{v: impact, w: 3}, {v: shake, w: 2}, {v: white_flash, w: 1}]
+  reveal:
+    sizes: [{v: wide, w: 2}, {v: medium, w: 2}, {v: close, w: 2}]
+    angles: [{v: low, w: 2}, {v: eye, w: 2}, {v: overhead, w: 1}]
+    movements: [{v: slow_dolly_in, w: 3}, {v: tilt_up, w: 2}]
+    fx: [{v: dramatic_focus, w: 2}, {v: white_flash, w: 1}]
+  monologue:
+    sizes: [{v: close, w: 3}, {v: medium_close, w: 2}, {v: extreme_close, w: 2}]
+    angles: [{v: eye, w: 3}, {v: low, w: 1}]
+    movements: [{v: static, w: 3}, {v: slow_push_in, w: 2}]
+    fx: [{v: flashback, w: 1}]
+  transition:
+    sizes: [{v: wide, w: 2}, {v: extreme_wide, w: 2}, {v: medium, w: 1}]
+    angles: [{v: eye, w: 2}, {v: high, w: 2}, {v: overhead, w: 1}]
+    movements: [{v: slow_pan, w: 2}, {v: static, w: 2}, {v: tilt_down, w: 1}]
+    fx: []
+
+# fx token -> storyboard tag / transition handling.
+fx_map:
+  impact: "[AnimeFX: Impact]"
+  speed_lines: "[AnimeFX: SpeedLines]"
+  shake: "[AnimeFX: ScreenShake]"
+  flashback: "[AnimeFX: Flashback]"
+  dramatic_focus: "[AnimeFX: DramaticFocus]"
+  white_flash: "white_flash"   # becomes transition_in

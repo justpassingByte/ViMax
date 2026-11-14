@@ -143,3 +143,18 @@ trong `configs/agent.local.yaml` (hoặc đặt biến môi trường `VIMAX_QUA
 - **Tắt / lùi:** `quality.voice_mode: native` → về giọng đổi theo ngữ cảnh như cũ.
 - **Không dùng:** TTS ngoài / chuyển giọng (theo yêu cầu) — Muse vẫn lồng tiếng.
 - **Test:** `pytest tests -q` → 378 passed.
+
+## Phase 08 — Bộ lên shot theo luật (cờ `quality.shot_planner`)
+- **Thay đổi:**
+  - `configs/shot_rules.yaml` (mới): mỗi loại beat → cỡ/góc/chuyển động/fx có trọng số; luật đa dạng;
+    từ khóa suy luận beat_type; `fx_map`. Không tên nhân vật/bộ truyện.
+  - `agents/shot_planner.py` (mới): `ShotSlot`; `infer_beat_type` (thuần code, theo từ khóa);
+    `plan_scene` (chọn ngẫu nhiên có trọng số + seed cố định, sửa đa dạng); `check_variety`;
+    `fx_tokens_to_tags` (→ `[AnimeFX: …]`/transition); `strip_forbidden_fx_tags` (xóa tag fx ở beat không cho phép).
+  - `interfaces/manga.py`: `MangaBeat.beat_type` (optional); `interfaces/shot_description.py`:
+    `ShotBriefDescription` thêm `beat_ids/beat_type/shot_size/camera_angle/camera_movement/fx/characters` (mặc định rỗng).
+  - Tests: `test_shot_planner.py` (infer_beat_type; plan_scene lặp lại được + không vi phạm đa dạng ở 3/8/20 beat; fx map/strip).
+- **Tắt / lùi:** `quality.shot_planner: false` → không áp luật shot.
+- **Chưa làm (8.4 sâu):** chèn khối `SHOT SLOTS` vào prompt grounded + ghi đè trường sau LLM trong `plan_episode`
+  (module + schema đã sẵn; để tích hợp runtime lần sau).
+- **Test:** `pytest tests -q` → 386 passed.

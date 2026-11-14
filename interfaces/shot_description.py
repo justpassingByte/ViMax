@@ -80,6 +80,14 @@ class ShotBriefDescription(BaseModel):
         description="Optional editorial duration (in seconds) for post-render pacing of silent anime action beats (e.g., 1.2-3.0s). Leave None for spoken dialogue shots to preserve full audio duration.",
         examples=[None, 4.0, 3.5],
     )
+    # Rule-based shot planner fields (phase 08). Optional; old data reads fine.
+    beat_ids: List[str] = Field(default_factory=list)
+    beat_type: str = ""
+    shot_size: str = ""
+    camera_angle: str = ""
+    camera_movement: str = ""
+    fx: List[str] = Field(default_factory=list)
+    characters: List[str] = Field(default_factory=list)
 
     def __str__(self):
         s = f"Shot {self.idx}:\n"
