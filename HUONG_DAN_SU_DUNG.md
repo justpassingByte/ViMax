@@ -163,3 +163,29 @@ python3 -m venv .venv && ./.venv/bin/pip install uv && ./.venv/bin/uv pip instal
 sudo cp deploy/vimax-web.service /etc/systemd/system/vimax-web.service
 sudo systemctl daemon-reload && sudo systemctl enable --now vimax-web
 ```
+
+---
+
+## Nâng cấp chất lượng (section `quality:` trong `agent.local.yaml`)
+
+Các cờ `quality.*` bật/tắt từng cải tiến; mặc định đã bật bản nâng cấp. Xem mô tả
+từng cờ trong `configs/agent.example.yaml`. Để lùi một phần nếu thấy kém hơn, đổi
+cờ tương ứng về giá trị cũ (ví dụ `canon_gate: false`, `ref_policy: legacy`,
+`embeddings: off`, `voice_mode: native`, `shot_planner: false`).
+
+- **Hồ sơ nhân vật** (`profiles`): sau khi đọc truyện, pipeline dựng hồ sơ nháp cho
+  từng nhân vật trong `<working_dir>/profiles/`. Duyệt một lần bằng trang HTML:
+  `python -m tools.profile_sheet <working_dir>` rồi mở file
+  `profiles/profiles_review.html`. Chốt/khoá hồ sơ: `python -m utils.profile_store approve|lock|merge <id> [<id2>] --base <working_dir>`.
+
+- **Duyệt ngoại lệ mỗi chương** (`exceptions_queue`): lỗi (danh tính keyframe, gợi ý
+  ghép hồ sơ, mâu thuẫn cốt truyện, canon phải sửa) gom vào `exceptions/chNN.json`.
+  Xem một trang: `python -m tools.review_page <working_dir> chNN` → mở
+  `exceptions/chNN.review.html`. Ghi quyết định vào `exceptions/chNN.decisions.json`
+  rồi áp dụng: `python -m pipelines.apply_decisions <working_dir> chNN` (xoá keyframe
+  để làm lại đúng shot, hoặc ghép hồ sơ). Chạy lại chương chỉ sinh lại phần bị ảnh hưởng.
+
+- **Embedding** (`embeddings`, `text_embeddings`): cần nhóm phụ thuộc tuỳ chọn
+  `embeddings` (`torch`, `transformers`, `numpy`). Model tải lần đầu về cache mặc định:
+  `facebook/dinov2-small` (Apache-2.0) và `intfloat/multilingual-e5-small` (MIT).
+  Thiếu thư viện/model → tính năng tự tắt, pipeline vẫn chạy.

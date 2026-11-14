@@ -175,3 +175,27 @@ trong `configs/agent.local.yaml` (hoặc đặt biến môi trường `VIMAX_QUA
 - **Chưa làm (9.3 sâu):** chạy trích xuất sau mỗi tập trong `plan_series`; chèn `STORY CONTEXT` vào storyboard;
   thêm issue `fact_contradiction` vào cổng cốt truyện — store/extractor đã sẵn, để tích hợp runtime lần sau.
 - **Test:** `pytest tests -q` → 391 passed.
+
+## Phase 10 — Chạy nhiều chương không người (cờ `quality.exceptions_queue`, `max_clip_retakes`, `chapter_budget_*`)
+- **Thay đổi:**
+  - `agents/unattended.py` (mới): `check_clip` (lấy frame đầu/giữa/cuối → `check_frame`, frame-extractor injected),
+    `BudgetTracker` (trần ảnh/clip mỗi chương, 0 = không giới hạn, vượt → dừng chương),
+    `aggregate_chapter_exceptions` → `exceptions/chNN.json` (gom keyframe/clip exception, gợi ý ghép hồ sơ,
+    mâu thuẫn cốt truyện, canon phải sửa).
+  - `pipelines/apply_decisions.py` (mới): CLI áp quyết định (`retake` xoá đúng keyframe để sinh lại chỉ shot đó;
+    `merge` ghép hồ sơ; `accept`/`skip`).
+  - `tools/review_page.py` (mới): trang HTML một chương để duyệt ngoại lệ.
+  - `HUONG_DAN_SU_DUNG.md`: thêm mục hồ sơ nhân vật, duyệt ngoại lệ, embedding.
+  - Tests: `test_unattended.py` (budget dừng đúng chỗ; clip rớt khi một frame rớt; gom exception; retake xoá đúng frame).
+- **10.4 Dọn dẹp:** guard cũ (`anime_director_guard.py` + test) đã **xoá ở phase 02** theo yêu cầu người dùng;
+  không tạo `tests/series_name_allowlist.txt` (không cần vì guard đã xoá).
+- **Tắt / lùi:** `quality.exceptions_queue: false` → không gom hàng ngoại lệ; `chapter_budget_*: 0` = không giới hạn.
+- **Chưa làm (10.1/10.2 sâu):** đấu `check_clip`/budget/aggregate vào `render_episode`/`plan_series` runtime và
+  liên kết trang review trong web UI — module + CLI đã sẵn, để tích hợp lần sau.
+- **Test:** `pytest tests -q` → 396 passed.
+
+## Tổng kết
+- 11 phase (00–10) đã làm, mỗi phase một commit, test luôn xanh (396 passed cuối cùng).
+- Mọi cờ `quality.*` mặc định = bản nâng cấp; tắt từng cờ để lùi an toàn.
+- Một số tích hợp runtime sâu (đấu các module đã-test vào vòng render/series) được ghi rõ là "chưa làm"
+  trong từng phase ở trên — module, schema, CLI và test đã sẵn để nối tiếp.
