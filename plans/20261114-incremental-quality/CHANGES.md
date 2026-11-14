@@ -96,3 +96,21 @@ trong `configs/agent.local.yaml` (hoặc đặt biến môi trường `VIMAX_QUA
   (gom cảnh về so chuỗi, không làm sạch seed). Thiếu torch/model → tự về off kèm cảnh báo.
 - **Model tải về:** C cache mặc định (người dùng đã chọn). dinov2-small ~90 MB, e5-small ~470 MB.
 - **Test:** `pytest tests -q` → 358 passed.
+
+## Phase 05 — Hồ sơ nhân vật (cờ `quality.profiles`, `quality.ref_policy: profile`)
+- **Thay đổi:**
+  - `interfaces/profile.py` (mới): `CharacterProfile`, `Outfit` (valid_from/to_beat), `StateEntry`,
+    `SourceCrop`, `VoiceProfile` (phase 07 điền), `OutfitSheet`.
+  - `utils/profile_store.py` (mới): `ProfileStore` đọc/ghi `<base>/profiles/<id>/profile.json`;
+    `beat_key("ch01_b012")→(1,12)`; `outfit_at`/`states_at` theo ranh giới beat qua nhiều chương;
+    `match` (alias chính xác / auto-merge ≥0.86 / suggest ≥0.70 / new) KHÔNG ghép 2 nhân vật từng
+    cùng panel (`cooccur_beat_ids`); hồ sơ `locked` chỉ nhận thêm crop/state; CLI `approve|lock|merge|list`.
+  - `utils/profile_builder.py` (mới): `build_draft_profiles` dựng hồ sơ draft từ roster + series bible
+    (alias, permanent_features, seed crops, prompt_notes, outfit mặc định, cooccurrence) — fail-soft.
+  - `tools/profile_sheet.py` (mới): render HTML một trang duyệt dàn nhân vật.
+  - `manga2video_pipeline::plan_episode`: dựng hồ sơ draft sau roster khi `profiles` bật (không chặn render).
+  - Tests: `test_profile_store.py` (beat_key, outfit_at, states_at, match, locked), `test_profile_builder.py`.
+- **Tắt / lùi:** `quality.profiles: false` → không dựng hồ sơ; `ref_policy` khác `profile` → chọn ảnh như phase 03.
+- **Chưa làm (để lần sau):** gom trang phục theo text-embedding thành nhiều `Outfit`; sinh sheet theo trạng thái;
+  thay hẳn `_merge_series_bank`; nhánh `ref_policy: profile` đọc `outfit_at` khi chọn ảnh (hiện degrade về all_characters).
+- **Test:** `pytest tests -q` → 367 passed.

@@ -769,6 +769,21 @@ class Manga2VideoPipeline:
                 episode_title=episode_title,
             )
 
+        # 3.45 Character profiles (feature-flagged): populate draft profiles from the
+        # roster so later chapters/outfits/states are addressable. Fail-soft.
+        try:
+            from agent_runtime.config import quality_profiles as _quality_profiles
+            if _quality_profiles(_resolve_workspace_root(str(work_root))):
+                from utils.profile_store import ProfileStore
+                from utils.profile_builder import build_draft_profiles
+                from utils.series_bible import load_configured_series
+                _store = ProfileStore(str(work_root))
+                _bible = load_configured_series(_resolve_workspace_root(str(work_root)))
+                build_draft_profiles(characters, character_seed_refs, beats_by_scene, _store, _bible)
+                _emit_progress(progress, "profiles_built", f"Built draft character profiles ({len(_store.all())})")
+        except Exception as _exc:  # never block a render
+            _emit_progress(progress, "profiles_skip", f"Profile build skipped: {_exc}")
+
         # 3.5 Manga Vision Layer (feature-flagged): chapter-level world model
         from agent_runtime.config import manga_vision_enabled as _manga_vision_enabled
         from agent_runtime.config import quality_canon_gate as _quality_canon_gate
