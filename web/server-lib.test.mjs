@@ -110,7 +110,7 @@ describe('web bridge state', () => {
     ]);
 
     const artifacts = await listSessionArtifacts(root, 'session-1');
-    expect(artifacts.length).toBeLessThanOrEqual(500);
+    expect(artifacts.length).toBeLessThanOrEqual(5000);
     const paths = new Set(artifacts.map((item) => item.path));
     expect(paths.has('manga2video/series_manifest.json')).toBe(true);
     expect(paths.has('manga2video/character_portraits/0_Kayden/front.png')).toBe(true);
@@ -120,6 +120,33 @@ describe('web bridge state', () => {
     const srtArtifact = artifacts.find((item) => item.name === 'final_video_vietsub.srt');
     expect(srtArtifact?.kind).toBe('document');
     expect(artifactContentType('final_video_vietsub.srt')).toBe('text/plain; charset=utf-8');
+  });
+
+  it('keeps images and videos visible even when scene json documents exceed 500', async () => {
+    const root = await fixture();
+    const mangaRoot = path.join(root, '.working_dir', 'session-1', 'manga2video');
+    const portraitDir = path.join(mangaRoot, 'character_portraits', '0_Kayden');
+    await mkdir(portraitDir, {recursive: true});
+
+    const writes = [];
+    for (let s = 0; s < 110; s += 1) {
+      for (let sh = 0; sh < 5; sh += 1) {
+        const shotDir = path.join(mangaRoot, `scene_${s}`, 'shots', String(sh));
+        await mkdir(shotDir, {recursive: true});
+        writes.push(writeFile(path.join(shotDir, 'shot_description.json'), '{}'));
+      }
+    }
+    const shot0Dir = path.join(mangaRoot, 'scene_0', 'shots', '0');
+    writes.push(writeFile(path.join(portraitDir, 'front.png'), 'portrait'));
+    writes.push(writeFile(path.join(shot0Dir, 'first_frame.png'), 'frame'));
+    writes.push(writeFile(path.join(shot0Dir, 'video.mp4'), 'video'));
+    await Promise.all(writes);
+
+    const artifacts = await listSessionArtifacts(root, 'session-1');
+    const paths = new Set(artifacts.map((item) => item.path));
+    expect(paths.has('manga2video/character_portraits/0_Kayden/front.png')).toBe(true);
+    expect(paths.has('manga2video/scene_0/shots/0/first_frame.png')).toBe(true);
+    expect(paths.has('manga2video/scene_0/shots/0/video.mp4')).toBe(true);
   });
 
   it('stores uploads inside the session without overwriting matching names', async () => {

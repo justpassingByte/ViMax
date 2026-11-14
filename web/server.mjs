@@ -333,7 +333,12 @@ function formatByteLimit(bytes) {
 
 function sendJson(response, status, payload) {
   if (response.writableEnded) return;
-  response.writeHead(status, {'Content-Type': 'application/json; charset=utf-8'});
+  response.writeHead(status, {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Cache-Control': 'no-cache, no-store, must-revalidate',
+    'Pragma': 'no-cache',
+    'Expires': '0',
+  });
   response.end(JSON.stringify(payload));
 }
 
@@ -342,7 +347,9 @@ async function streamArtifact(response, sessionId, relativePath) {
   if (!existsSync(filePath)) return sendJson(response, 404, {error: 'Artifact not found'});
   response.writeHead(200, {
     'Content-Type': artifactContentType(filePath),
-    'Cache-Control': 'private, max-age=60',
+    'Cache-Control': 'no-cache, no-store, must-revalidate',
+    'Pragma': 'no-cache',
+    'Expires': '0',
   });
   createReadStream(filePath).pipe(response);
 }

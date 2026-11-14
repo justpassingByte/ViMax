@@ -198,7 +198,7 @@ def resolve_voice_for_speaker(
     if "hojin" in spk_low:
         return "ja-JP-NanamiNeural" if provider == "edge-tts" else DEFAULT_FEMALE_VOICE_ELEVENLABS
     if "kayden" in spk_low:
-        return "ja-JP-DaichiNeural" if provider == "edge-tts" else DEFAULT_MALE_VOICE_ELEVENLABS
+        return "ja-JP-KeitaNeural" if provider == "edge-tts" else DEFAULT_MALE_VOICE_ELEVENLABS
 
     # 2. Check character description/gender from characters metadata
     is_female = False
@@ -259,7 +259,7 @@ def resolve_voice_and_prosody(
     if "hojin" in spk_lower:
         return "ja-JP-NanamiNeural", "+8%", "+10Hz"
     if "kayden" in spk_lower:
-        return "ja-JP-DaichiNeural", "-5%", "-5Hz"
+        return "ja-JP-KeitaNeural", "-8%", "-8Hz"
     if any(kw in spk_lower for kw in ["sếp", "sep", "boss", "manager", "quản lý"]):
         return voice, "-5%", "-5Hz"
     if any(kw in spk_lower for kw in ["huy", "dev", "coder", "developer"]):
@@ -301,6 +301,19 @@ def mix_multitrack_video_and_audio(
                 if video_audio_volume == 1.0
                 else video.audio.with_volume_scaled(video_audio_volume)
             )
+            # Automatic dialog ducking: duck native audio to 0.15 during TTS voiceover
+            for start_time, voice_path in (speech_segments or []):
+                if voice_path and os.path.exists(voice_path):
+                    try:
+                        spk_clip = AudioFileClip(voice_path)
+                        spk_dur = spk_clip.duration
+                        spk_clip.close()
+                        t0 = max(0.0, start_time - 0.1)
+                        t1 = min(video.duration, start_time + spk_dur + 0.2)
+                        if t1 > t0:
+                            native_clip = native_clip.with_volume_scaled(0.15, start_time=t0, end_time=t1)
+                    except Exception as exc:
+                        logger.warning(f"Failed to duck native audio for {voice_path}: {exc}")
             audio_clips.append(native_clip)
         except Exception as e:
             logger.warning(f"Error preserving native video audio: {e}")
@@ -670,8 +683,8 @@ def _escape_ass_text(text: str) -> str:
 def write_ass_subtitles(
     cues: List[Tuple[float, float, str]],
     output_path: str,
-    font: str = "Arial",
-    font_size: int = 34,
+    font: str = "Segoe UI Semibold",
+    font_size: int = 32,
     play_res_x: int = 1280,
     play_res_y: int = 720,
 ) -> str:
@@ -683,7 +696,7 @@ def write_ass_subtitles(
         "ScaledBorderAndShadow: yes\n\n"
         "[V4+ Styles]\n"
         "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n"
-        f"Style: Default,{font},{font_size},&H00FFFFFF,&H0000FFFF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,2.4,1.2,2,48,48,30,1\n\n"
+        f"Style: Default,{font},{font_size},&H00FFFFFF,&H0000FFFF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3.0,1.5,2,48,48,36,1\n\n"
         "[Events]\n"
         "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
     )
@@ -879,3 +892,56 @@ async def translate_subtitles_with_chat_model(
     except Exception as exc:
         logger.warning(f"Subtitle translation fallback failed ({exc}); keeping original lines.")
     return dict(lines)
+
+
+def burn_shot_subtitle(
+    video_path: str,
+    shot_description: Any,
+    font: str = "Segoe UI Semibold",
+    font_size: int = 30,
+) -> bool:
+    """Extract Vietsub/dialogue from shot_description and burn crisp, cinema-grade ASS subtitle onto video_path."""
+    if not os.path.exists(video_path):
+        return False
+
+    ad = getattr(shot_description, "audio_desc", "") or ""
+    # Extract Vietsub text if present
+    vm = re.search(r"\(Vietsub:\s*([^)]+)\)", ad, re.IGNORECASE)
+    sub_text = vm.group(1).strip() if vm else ""
+    if not sub_text:
+        # Fallback to spoken dialogue line if no explicit vietsub tag
+        sm = re.search(r"\[(?:Speaker|Thought)\][^:]*:\s*['\"]?([^'\"\[]+)['\"]?", ad)
+        if sm:
+            sub_text = sm.group(1).strip()
+
+    if not sub_text or sub_text.startswith("...") or len(sub_text.strip(" .")) == 0:
+        return False
+
+    # Get duration of shot video
+    duration = 5.0
+    try:
+        from moviepy import VideoFileClip
+        with VideoFileClip(video_path) as clip:
+            duration = clip.duration
+    except Exception:
+        pass
+
+    start_t = 0.2
+    end_t = max(0.8, duration - 0.2)
+    cues = [(start_t, end_t, sub_text)]
+    ass_path = str(Path(video_path).with_suffix(".shot_sub.ass"))
+    write_ass_subtitles(cues, ass_path, font=font, font_size=font_size)
+    try:
+        burn_subtitles_into_video(video_path, ass_path, video_path)
+        logger.info(f"Burned per-shot subtitle into {video_path}: '{sub_text}'")
+        return True
+    except Exception as exc:
+        logger.warning(f"Failed burning per-shot subtitle for {video_path}: {exc}")
+        return False
+    finally:
+        if os.path.exists(ass_path):
+            try:
+                os.remove(ass_path)
+            except Exception:
+                pass
+

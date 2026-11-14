@@ -21,6 +21,21 @@ DEFAULT_ANIME_STYLE = (
 )
 
 
+def _force_utf8_stdio() -> None:
+    """Windows pipes default to the ANSI codepage (e.g. cp1252) which cannot
+    encode the emoji/log glyphs used by the pipeline — force UTF-8 with
+    replacement so redirected stdout/web/CI runs never crash on prints."""
+    for stream in (sys.stdout, sys.stderr):
+        if stream is not None and hasattr(stream, "reconfigure"):
+            try:
+                stream.reconfigure(encoding="utf-8", errors="replace")
+            except (OSError, ValueError):
+                pass
+
+
+_force_utf8_stdio()
+
+
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Adapt manga, manhwa, or webtoon chapters into canon-faithful anime episodes or full multi-episode series."
@@ -170,11 +185,6 @@ async def run_manga2video_cli(argv: Sequence[str] | None = None) -> dict[str, An
         image_generator = _build_image_generator()
         if args.stop_after == "full":
             video_generator = _build_video_generator()
-        elif args.stop_after == "frames":
-            try:
-                video_generator = _build_video_generator()
-            except RuntimeError:
-                video_generator = unavailable
         else:
             video_generator = unavailable
 

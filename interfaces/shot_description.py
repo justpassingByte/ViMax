@@ -1,5 +1,29 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import List, Optional, Literal, Tuple
+
+_VALID_TRANSITIONS = {"cut", "crossfade", "fade_black", "white_flash", "whip_pan"}
+
+
+def _normalize_transition_in(value: object) -> str:
+    """Normalize transition_in variants to supported canonical literals."""
+    if value is None:
+        return "cut"
+    raw = str(value).strip().lower().replace("-", "_").replace(" ", "_")
+    if raw in _VALID_TRANSITIONS:
+        return raw
+    alias_map = {
+        "dissolve": "crossfade",
+        "fade": "crossfade",
+        "fade_in": "fade_black",
+        "fade_to_black": "fade_black",
+        "black_fade": "fade_black",
+        "flash": "white_flash",
+        "flash_white": "white_flash",
+        "swish_pan": "whip_pan",
+        "snap_pan": "whip_pan",
+        "hard_cut": "cut",
+    }
+    return alias_map.get(raw, "cut")
 
 
 class ShotBriefDescription(BaseModel):
@@ -41,6 +65,11 @@ class ShotBriefDescription(BaseModel):
         description="Editorial transition from the previous shot into this shot: 'cut' for continuous action or sharp impacts, 'crossfade' for gentle emotional/flashback/closing dissolves, 'fade_black' for clear time skips or location shifts, 'white_flash' for power awakenings, 'whip_pan' for dynamic swish pan angle shifts.",
         examples=["cut", "fade_black", "crossfade", "white_flash", "whip_pan"],
     )
+
+    @field_validator("transition_in", mode="before")
+    @classmethod
+    def _validate_transition_in(cls, v: object) -> str:
+        return _normalize_transition_in(v)
     continuity_from_prev: bool = Field(
         default=False,
         description="Set True when this shot immediately continues the spatial momentum, battle condition, lighting, and screen direction from the previous shot's ending frame.",
@@ -136,11 +165,16 @@ class ShotDescription(BaseModel):
             None,
         ],
     )
-    transition_in: Literal["cut", "crossfade", "fade_black", "white_flash"] = Field(
+    transition_in: Literal["cut", "crossfade", "fade_black", "white_flash", "whip_pan"] = Field(
         default="cut",
-        description="Editorial transition from the previous shot into this shot: 'cut', 'crossfade', 'fade_black', or 'white_flash'.",
-        examples=["cut", "fade_black", "crossfade", "white_flash"],
+        description="Editorial transition from the previous shot into this shot: 'cut', 'crossfade', 'fade_black', 'white_flash', or 'whip_pan'.",
+        examples=["cut", "fade_black", "crossfade", "white_flash", "whip_pan"],
     )
+
+    @field_validator("transition_in", mode="before")
+    @classmethod
+    def _validate_transition_in(cls, v: object) -> str:
+        return _normalize_transition_in(v)
     continuity_from_prev: bool = Field(
         default=False,
         description="Whether this shot directly anchors its opening visual state to the previous shot's ending frame.",

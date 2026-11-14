@@ -31,6 +31,19 @@ subtitles:
   font: Arial                   # Font hiển thị phụ đề (Linux VPS cần cài fonts-dejavu-core / fonts-noto-core)
   font_size: 34                 # Cỡ chữ ASS (theo hệ tọa độ 1280x720)
 
+# Manga Vision & Cinematic Director layer (chapter-level world model, spatial
+# scene graphs, cinematic scene expansion, CANON/INFERRED/CREATIVE shot
+# provenance, report-only visual QA). Default OFF — existing pipeline behavior
+# is fully preserved when disabled. Can also be toggled via the
+# VIMAX_MANGA_VISION_ENABLED environment variable.
+manga_vision:
+  enabled: false                # Bật lớp Manga Vision (world model + mở rộng điện ảnh + visual QA report-only)
+  max_context_chars: 2400       # Giới hạn ký tự khối WORLD CONTEXT gửi vào prompt storyboard mỗi scene
+  qa_max_frame_pairs: 4         # Số cặp (keyframe, panel) tối đa cho mỗi lần VLM review (giảm để tránh 502 upload)
+  identity_dedup_embedder: auto # auto | mock | off — auto dùng provider ở mục `embedding` khi hoạt động, hỏng thì tự rơi về mock offline (report-only)
+  identity_dedup_threshold: 0.82  # Ngưỡng cosine similarity để coi 2 nhân vật là "nghi trùng danh tính"
+
+
 image:
   # Chọn provider & model tạo ảnh. Ví dụ:
   # - muse2api (Local / VPS miễn phí qua Web):
@@ -83,6 +96,8 @@ video:
 
 # Optional. Fill these only when using novel2video planning.
 embedding:
+  # OpenAI-compatible embeddings. Used by novel2video planning AND by the
+  # Manga Vision duplicate-identity detector (manga_vision.identity_dedup_embedder: auto).
   model_provider: openai
   model: <YOUR_EMBEDDING_MODEL>
   base_url: <YOUR_EMBEDDING_BASE_URL>

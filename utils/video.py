@@ -102,22 +102,25 @@ def resolve_anime_shot_pacing(sd: Any, raw_dur: float = 8.0) -> float:
             return 2.5
         elif any(w in vis for w in ["establishing", "wide high-angle", "extreme wide", "quiet", "night sky"]):
             return 4.5
+        elif any(w in vis for w in ["stagger", "limp", "lê lết", "drag", "step by step", "pushing upright"]):
+            return 6.5
         else:
-            return 3.5
+            return 4.0
 
     line = dialogue_match.group(2).strip()
     line = re.sub(r"\(Vietsub:[^)]*\)", "", line).strip()
     words = line.split()
     word_count = len(words)
 
+    # Post-dialogue Ma cushion: Allow speaking time PLUS at least 1.5s - 2.0s of breathing space so the cut never cuts off speech!
     if word_count <= 4:
-        return 3.2
-    elif word_count <= 8:
         return 4.5
-    elif word_count <= 13:
+    elif word_count <= 8:
         return 5.8
+    elif word_count <= 13:
+        return 7.2
     else:
-        return 7.5
+        return 8.5
 
 
 def conform_shot_video_duration(video_path: str, sd: Any) -> None:
@@ -144,7 +147,9 @@ def conform_shot_video_duration(video_path: str, sd: Any) -> None:
                 speed_factor = max(1.0, min(8.0, raw_dur / target_dur))
                 paced_clip = raw_clip.with_effects([vfx.MultiplySpeed(speed_factor)])
             else:
-                paced_clip = raw_clip.subclipped(0, min(target_dur, raw_dur))
+                # Dialogue shots: Never truncate abruptly! Preserve full speech and natural trailing breath/silence
+                cushioned_dur = min(raw_dur, max(target_dur, raw_dur - 0.5))
+                paced_clip = raw_clip.subclipped(0, cushioned_dur)
             paced_clip.write_videofile(tmp_path, codec="libx264", audio_codec="aac", preset="ultrafast", logger=None)
     except Exception as e:
         logging.warning(f"Could not conform shot duration for {video_path}: {e}")
@@ -292,20 +297,18 @@ def resolve_and_apply_anime_fx(clip: Any, sd: Any, extra_clips: Optional[List[An
             if extra_clips is not None:
                 extra_clips.append(c)
 
-        # 13. Dynamic Camera Drift (Ken Burns) for non-action conversational/scenery shots
-        # Eliminates frozen static frames across the entire episode!
-        is_action_beat = bool(re.search(r"ActionBurst|Vanish|FrameSkip|SpeedStreak|SpeedLines|SnapZoom|ScreenShake", combined_desc, re.IGNORECASE))
-        if not is_action_beat:
-            # Alternating subtle drift creates natural cinematic flow
+        # 13. Dynamic Camera Drift (Ken Burns) - ONLY if explicitly tagged
+        if re.search(r"\[(?:AnimeFX:\s*)?(?:KenBurns|CameraDrift|Drift)\]", combined_desc, re.IGNORECASE):
             drift_dir = "push_in" if getattr(sd, "idx", 0) % 2 == 0 else "pan_right"
             c = apply_anime_ken_burns_drift(c, direction=drift_dir, zoom_ratio=1.04)
             if extra_clips is not None:
                 extra_clips.append(c)
 
-        # 14. Organic 2D Anime Cel Texture & Halation
-        c = apply_anime_film_grain_and_halation(c, grain_intensity=0.05, halation_warmth=0.08)
-        if extra_clips is not None:
-            extra_clips.append(c)
+        # 14. Organic 2D Anime Cel Texture & Halation (Only if explicitly requested)
+        if re.search(r"\[(?:AnimeFX:\s*)?(?:FilmGrain|Film_Grain|Hạt\s*phim)\]", combined_desc, re.IGNORECASE):
+            c = apply_anime_film_grain_and_halation(c, grain_intensity=0.05, halation_warmth=0.08)
+            if extra_clips is not None:
+                extra_clips.append(c)
 
     except Exception as e:
         logging.warning(f"Error applying anime FX to shot: {e}")

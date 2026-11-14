@@ -258,3 +258,134 @@ def subtitles_font_size(workspace_root: str | Path = ".") -> int:
         except (TypeError, ValueError):
             return DEFAULT_SUBTITLES_FONT_SIZE
     return DEFAULT_SUBTITLES_FONT_SIZE
+
+
+DEFAULT_MANGA_VISION_ENABLED = False
+DEFAULT_MANGA_VISION_MAX_CONTEXT_CHARS = 2400
+DEFAULT_MANGA_VISION_QA_MAX_FRAME_PAIRS = 4
+DEFAULT_MANGA_VISION_AUTO_RERENDER_CRITICAL = True
+DEFAULT_MANGA_VISION_MAX_RERENDER_CYCLES = 2
+DEFAULT_MANGA_VISION_IDENTITY_DEDUP_EMBEDDER = "auto"
+DEFAULT_MANGA_VISION_IDENTITY_DEDUP_THRESHOLD = 0.82
+
+
+def manga_vision_qa_max_frame_pairs(workspace_root: str | Path = ".") -> int:
+    raw = os.environ.get("VIMAX_MANGA_VISION_QA_MAX_FRAME_PAIRS")
+    if raw is not None and raw.strip():
+        try:
+            return max(1, int(raw))
+        except ValueError:
+            pass
+    section = load_agent_config(workspace_root).get("manga_vision", {})
+    if isinstance(section, dict) and section.get("qa_max_frame_pairs") is not None:
+        try:
+            return max(1, int(section.get("qa_max_frame_pairs")))
+        except (TypeError, ValueError):
+            pass
+    return DEFAULT_MANGA_VISION_QA_MAX_FRAME_PAIRS
+    """Embedder used by the report-only duplicate-identity detector.
+
+    - ``auto`` (default): use the real OpenAI-compatible provider from the
+      ``embedding`` section when configured/reachable, else fall back to the
+      deterministic offline mock.
+    - ``mock``: always use the offline mock (no network).
+    - ``off``: skip identity dedup entirely.
+    """
+    raw = os.environ.get("VIMAX_MANGA_VISION_IDENTITY_DEDUP_EMBEDDER")
+    if raw is not None and raw.strip() != "":
+        value = raw.strip().lower()
+        return value if value in {"auto", "mock", "off"} else DEFAULT_MANGA_VISION_IDENTITY_DEDUP_EMBEDDER
+    section = load_agent_config(workspace_root).get("manga_vision", {})
+    if isinstance(section, dict):
+        value = str(section.get("identity_dedup_embedder", "")).strip().lower()
+        if value in {"auto", "mock", "off"}:
+            return value
+    return DEFAULT_MANGA_VISION_IDENTITY_DEDUP_EMBEDDER
+
+
+def manga_vision_auto_rerender_critical(workspace_root: str | Path = ".") -> bool:
+    raw = os.environ.get("VIMAX_MANGA_VISION_AUTO_RERENDER_CRITICAL")
+    if raw is not None and raw.strip() != "":
+        return _parse_bool(raw, DEFAULT_MANGA_VISION_AUTO_RERENDER_CRITICAL)
+    section = load_agent_config(workspace_root).get("manga_vision", {})
+    if isinstance(section, dict) and "auto_rerender_critical" in section:
+        return _parse_bool(section.get("auto_rerender_critical"), DEFAULT_MANGA_VISION_AUTO_RERENDER_CRITICAL)
+    return DEFAULT_MANGA_VISION_AUTO_RERENDER_CRITICAL
+
+
+def manga_vision_max_rerender_cycles(workspace_root: str | Path = ".") -> int:
+    raw = os.environ.get("VIMAX_MANGA_VISION_MAX_RERENDER_CYCLES")
+    if raw is not None and raw.strip():
+        try:
+            return max(1, min(5, int(raw)))
+        except ValueError:
+            pass
+    section = load_agent_config(workspace_root).get("manga_vision", {})
+    if isinstance(section, dict) and section.get("max_rerender_cycles") is not None:
+        try:
+            return max(1, min(5, int(section.get("max_rerender_cycles"))))
+        except (TypeError, ValueError):
+            pass
+    return DEFAULT_MANGA_VISION_MAX_RERENDER_CYCLES
+
+
+def manga_vision_identity_dedup_embedder(workspace_root: str | Path = ".") -> str:
+    """Embedder used by the report-only duplicate-identity detector."""
+    raw = os.environ.get("VIMAX_MANGA_VISION_IDENTITY_DEDUP_EMBEDDER")
+    if raw is not None and raw.strip() != "":
+        value = raw.strip().lower()
+        return value if value in {"auto", "mock", "off"} else DEFAULT_MANGA_VISION_IDENTITY_DEDUP_EMBEDDER
+    section = load_agent_config(workspace_root).get("manga_vision", {})
+    if isinstance(section, dict):
+        value = str(section.get("identity_dedup_embedder", "")).strip().lower()
+        if value in {"auto", "mock", "off"}:
+            return value
+    return DEFAULT_MANGA_VISION_IDENTITY_DEDUP_EMBEDDER
+
+
+def manga_vision_identity_dedup_threshold(workspace_root: str | Path = ".") -> float:
+    raw = os.environ.get("VIMAX_MANGA_VISION_IDENTITY_DEDUP_THRESHOLD")
+    if raw is not None and raw.strip():
+        try:
+            return min(1.0, max(0.0, float(raw)))
+        except ValueError:
+            pass
+    section = load_agent_config(workspace_root).get("manga_vision", {})
+    if isinstance(section, dict) and section.get("identity_dedup_threshold") is not None:
+        try:
+            return min(1.0, max(0.0, float(section.get("identity_dedup_threshold"))))
+        except (TypeError, ValueError):
+            pass
+    return DEFAULT_MANGA_VISION_IDENTITY_DEDUP_THRESHOLD
+
+
+def manga_vision_enabled(workspace_root: str | Path = ".") -> bool:
+    """Feature flag for the Manga Vision & Cinematic Director layer.
+
+    Disabled by default so existing pipeline behavior is fully preserved;
+    enable via ``manga_vision.enabled: true`` in configs/agent.local.yaml or
+    the ``VIMAX_MANGA_VISION_ENABLED`` environment variable.
+    """
+    raw = os.environ.get("VIMAX_MANGA_VISION_ENABLED")
+    if raw is not None and raw.strip() != "":
+        return _parse_bool(raw, DEFAULT_MANGA_VISION_ENABLED)
+    section = load_agent_config(workspace_root).get("manga_vision", {})
+    if isinstance(section, dict) and "enabled" in section:
+        return _parse_bool(section.get("enabled"), DEFAULT_MANGA_VISION_ENABLED)
+    return DEFAULT_MANGA_VISION_ENABLED
+
+
+def manga_vision_max_context_chars(workspace_root: str | Path = ".") -> int:
+    raw = os.environ.get("VIMAX_MANGA_VISION_MAX_CONTEXT_CHARS")
+    if raw is not None and raw.strip():
+        try:
+            return max(400, int(raw))
+        except ValueError:
+            pass
+    section = load_agent_config(workspace_root).get("manga_vision", {})
+    if isinstance(section, dict) and section.get("max_context_chars") is not None:
+        try:
+            return max(400, int(section.get("max_context_chars")))
+        except (TypeError, ValueError):
+            pass
+    return DEFAULT_MANGA_VISION_MAX_CONTEXT_CHARS

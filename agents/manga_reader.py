@@ -49,10 +49,10 @@ Inspect the attached sequential comic page images carefully and extract a strict
    - Set `page_idx` to the exact integer page number shown in `[Page N]` where the character or panel appears.
    - Set `crop_box_norm` to `[ymin, xmin, ymax, xmax]` in integer coordinates `0..1000` tightly framing that panel (for beats) or that character's clean face/upper-body/full-body (for character observations, avoiding overlapping speech bubbles when possible).
 7. SCENE BREAKS: Set `is_scene_break: true` ONLY when location, time of day, or continuity cleanly switches to a new scene at that beat.
-8. CINEMATIC CAMERA COMPOSITION & PERSPECTIVE DYNAMICS:
-   - Capture the author's exact cinematic framing drawn in the panels: camera angles (extreme tilted Dutch angle, ground-level worm's eye looking diagonally up at walls/buildings, high overhead bird's eye, swooping rooftop tracking shots, extreme close-up on eyes).
-   - Record dynamic perspective, spatial depth, velocity lines, and environmental shockwaves rather than flattening into generic eye-level descriptions!
-   - In high-altitude descents or crash landings, extract the exact multi-panel sequence (high sky streak -> low rooftop swoop -> impact ground explosion -> Dutch-angle pained recovery).
+8. CINEMATIC CAMERA COMPOSITION & PERSPECTIVE DYNAMICS (NO WEBTOON PAGE CHROME):
+   - Capture the author's exact cinematic framing drawn in the panels: camera angles (extreme tilted Dutch angle, ground-level worm's eye looking diagonally up at walls/buildings, high overhead bird's eye, extreme close-up on eyes), lighting direction, and spatial depth.
+   - Strip comic-page layout chrome from `setting`, `action_desc`, and `visual_details`: put spoken/thought lines ONLY in `dialogues` and sounds ONLY in `sfx` — NEVER instruct image/video generators to draw speech/thought bubbles, comic SFX text (`FLASH!`, `YAWN`, `... A CAT?`), webtoon gutter borders (e.g. dark maroon margins, white gradient strips, empty fade rectangles), or truncated corner crop fragments; replace plain white close-up voids inside a dark scene with the continuous dim scene atmosphere.
+   - In high-altitude transitions, extract only what is literally drawn on the page without inventing crash explosions or extra dialogue not present in the panels.
 
 [Output Format]
 Return ONLY valid JSON matching:
@@ -723,7 +723,7 @@ class MangaReader:
         style: str = "2D Japanese anime",
         episode_title: str = "",
         max_words_per_shot: int = 14,
-        max_beats_per_scene: int = 8,
+        max_beats_per_scene: int = 14,
         min_beats_per_scene: int = 4,
     ) -> Tuple[MangaEpisodePlan, Dict[int, List[MangaBeat]]]:
         work_root = Path(working_dir)
@@ -735,19 +735,50 @@ class MangaReader:
             for page in ch.pages
         }
 
+        _feline_cue_re = re.compile(
+            r"\b(?:cat|cats|tabby|kitten|feline|meo|mèo|four\s+paws|quadruped|muzzle|whiskers|orange\s+(?:and\s+white\s+)?fur)\b"
+        )
+        _human_cue_re = re.compile(
+            r"\b(?:human|man|woman|boy|girl|long\s+black\s+hair|pale\s+skin|trench\s+coat|hoodie|jacket|turtleneck|trousers|boots|hand\s+pressed)\b"
+        )
+
         def _resolve_canon_name(raw_name: str, context_text: str) -> str:
             clean = " ".join((raw_name or "").split()).strip()
             if not clean:
                 return "Narrator"
             base = _strip_form_parenthetical(clean).lower()
-            ctx_l = f"{clean} {context_text}".lower()
-            if any(tok in ctx_l for tok in ("cat", "tabby", "meo", "mèo", "four paws")):
+            # 1. If the raw name explicitly states a form parenthetical, obey it first.
+            if "(" in clean and ")" in clean:
+                explicit_form = _form_category(clean, clean, clean)
+                if f"{clean.lower()}::{explicit_form}" in alias_map:
+                    return alias_map[f"{clean.lower()}::{explicit_form}"]
+                if f"{base}::{explicit_form}" in alias_map:
+                    return alias_map[f"{base}::{explicit_form}"]
+                if clean.lower() in alias_map:
+                    return alias_map[clean.lower()]
+
+            # 2. Match species cues using word boundaries outside quoted bubble text
+            #    so words like "location"/"calculating" or thought text "'... A CAT?'"
+            #    cannot flip a human beat into an animal form.
+            unquoted_ctx = re.sub(r"(['\"]).*?\1", " ", str(context_text or ""))
+            ctx_l = unquoted_ctx.lower()
+            has_human_cue = bool(_human_cue_re.search(ctx_l))
+            has_feline_cue = bool(_feline_cue_re.search(ctx_l))
+
+            if has_human_cue and not has_feline_cue:
+                if f"{clean.lower()}::human" in alias_map:
+                    return alias_map[f"{clean.lower()}::human"]
+                if f"{base}::human" in alias_map:
+                    return alias_map[f"{base}::human"]
+            if has_feline_cue and not has_human_cue:
                 if f"{clean.lower()}::feline" in alias_map:
                     return alias_map[f"{clean.lower()}::feline"]
                 if f"{base}::feline" in alias_map:
                     return alias_map[f"{base}::feline"]
-            if f"{clean.lower()}::human" in alias_map and any(tok in ctx_l for tok in ("human", "man", "hoodie", "coat", "hand")):
-                return alias_map[f"{clean.lower()}::human"]
+            if has_human_cue and f"{base}::human" in alias_map:
+                return alias_map[f"{base}::human"]
+            if has_feline_cue and f"{base}::feline" in alias_map:
+                return alias_map[f"{base}::feline"]
             return alias_map.get(clean.lower()) or alias_map.get(base) or clean
 
         # Flatten, normalize dialogues within word budget, and crop panel anchors once per unique beat
@@ -830,8 +861,13 @@ class MangaReader:
             if current_group:
                 hit_break = beat.is_scene_break and len(current_group) >= min_beats_per_scene
                 hit_chapter = beat.chapter != current_group[-1].chapter and len(current_group) >= 2
-                hit_cap = len(current_group) >= max_beats_per_scene
-                if hit_break or hit_chapter or hit_cap:
+                hit_setting_change = bool(
+                    beat.setting and current_group[-1].setting and
+                    beat.setting.strip().lower() != current_group[-1].setting.strip().lower() and
+                    len(current_group) >= min_beats_per_scene
+                )
+                hit_cap = len(current_group) >= max_beats_per_scene and (beat.is_scene_break or hit_setting_change or len(current_group) >= 16)
+                if hit_break or hit_chapter or hit_setting_change or hit_cap:
                     scene_groups.append(current_group)
                     current_group = []
             current_group.append(beat)
