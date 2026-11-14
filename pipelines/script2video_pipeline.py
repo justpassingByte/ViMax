@@ -28,6 +28,8 @@ from agent_runtime.config import (
     audio_model_provider,
     audio_voice,
     quality_generic_linter,
+    quality_max_reference_images,
+    quality_ref_policy,
     subtitles_burn_in,
     subtitles_enabled,
     subtitles_font,
@@ -553,18 +555,10 @@ def _format_video_prompt_audio(
     return ""
 
 
-def _ensure_character_portraits_and_spatial_anchors(
-    pairs: List[Tuple[str, str]],
-    visible_characters: List[Any],
-    character_portraits_registry: Optional[Dict[str, Dict[str, Dict[str, str]]]] = None,
-    scene_anchor_pair: Optional[Tuple[str, str]] = None,
-    limit: int = 4,
-) -> List[Tuple[str, str]]:
-    """Guarantees that canonical portraits for all visible characters appear FIRST (Image 0, Image 1...)
-    so diffusion models lock onto authentic facial likeness and wardrobe before secondary anchors."""
-    portrait_pairs = []
-    portrait_paths = set()
-
+def _portrait_pairs_for_characters(visible_characters, character_portraits_registry):
+    """One best-angle portrait (path, ident, desc) per present character."""
+    out = []
+    seen = set()
     if character_portraits_registry and visible_characters:
         for char in visible_characters:
             if not getattr(char, "is_visible", True):
@@ -579,15 +573,54 @@ def _ensure_character_portraits_and_spatial_anchors(
             )
             if chosen and isinstance(chosen, dict) and os.path.exists(chosen.get("path", "")):
                 p_path = chosen["path"]
-                if p_path not in portrait_paths:
-                    p_desc = (
+                if p_path not in seen:
+                    desc = (
                         f"Canonical character portrait reference for <{ident}>: maintain exact facial features, "
                         f"hairstyle, hair color, eye shape, and clothing colors directly matching this portrait. "
                         f"(NOTE: Do NOT copy the studio background of this portrait; adopt the scene lighting anchor "
                         f"for environment and color grading)."
                     )
-                    portrait_pairs.append((p_path, p_desc))
-                    portrait_paths.add(p_path)
+                    out.append((p_path, ident, desc))
+                    seen.add(p_path)
+    return out
+
+
+def _ensure_character_portraits_and_spatial_anchors(
+    pairs: List[Tuple[str, str]],
+    visible_characters: List[Any],
+    character_portraits_registry: Optional[Dict[str, Dict[str, Dict[str, str]]]] = None,
+    scene_anchor_pair: Optional[Tuple[str, str]] = None,
+    limit: int = 4,
+    *,
+    sheet_dir: Optional[str] = None,
+    sheet_tag: str = "",
+) -> List[Tuple[str, str]]:
+    """Guarantees that canonical portraits for all visible characters appear FIRST (Image 0, Image 1...)
+    so diffusion models lock onto authentic facial likeness and wardrobe before secondary anchors.
+
+    When there are more present characters than ``limit - 1`` reference slots and a
+    ``sheet_dir`` is given, their portraits are tiled into a single reference sheet so
+    no character is dropped (phase 03, quality.ref_policy != legacy).
+    """
+    portraits = _portrait_pairs_for_characters(visible_characters, character_portraits_registry)
+    portrait_paths = {p for p, _ident, _d in portraits}
+
+    portrait_pairs: List[Tuple[str, str]] = []
+    # If characters outnumber the slot budget (keep >=1 slot for a scene anchor), tile a sheet.
+    if sheet_dir and len(portraits) > max(1, limit - 1):
+        from utils import reference_sheet
+        entries = [(p, ident) for p, ident, _d in portraits]
+        out_path = os.path.join(sheet_dir, f"reference_sheet{('_' + sheet_tag) if sheet_tag else ''}.png")
+        try:
+            saved = reference_sheet.compose_to_file(entries, out_path)
+        except Exception:
+            saved = None
+        if saved:
+            portrait_pairs.append((saved, reference_sheet.order_label(entries)))
+        else:
+            portrait_pairs.extend((p, d) for p, _ident, d in portraits)
+    else:
+        portrait_pairs.extend((p, d) for p, _ident, d in portraits)
 
     other_pairs = [p for p in (pairs or []) if p[0] not in portrait_paths]
 
@@ -608,6 +641,42 @@ def _ensure_character_portraits_and_spatial_anchors(
 
     all_pairs = portrait_pairs + cleaned_other
     return _dedupe_image_text_pairs(all_pairs, limit=limit)
+
+
+def _classify_ref_role(path: str, text: str, portrait_paths: set) -> str:
+    p = (path or "").lower()
+    t = (text or "").lower()
+    if path in portrait_paths or "reference_sheet" in p or "portrait" in t or "turnaround" in t:
+        return "portrait"
+    if "panel_anchors" in p or "panel" in t:
+        return "panel"
+    if "anchor" in t or "video_end" in p or "establishing" in t:
+        return "scene_anchor"
+    if "continuity" in t or "previous shot" in t:
+        return "continuity"
+    return "other"
+
+
+def _write_refs_used(working_dir, shot_idx, frame_type, pairs, visible_characters, character_portraits_registry):
+    """Record the reference images actually sent to the image model (debug aid, always on)."""
+    try:
+        portraits = _portrait_pairs_for_characters(visible_characters, character_portraits_registry)
+        portrait_paths = {p for p, _i, _d in portraits}
+        n_present = sum(1 for c in (visible_characters or []) if getattr(c, "is_visible", True))
+        records = [
+            {"path": p, "text": t, "role": _classify_ref_role(p, t, portrait_paths)}
+            for p, t in pairs
+        ]
+        n_portrait = sum(1 for r in records if r["role"] == "portrait")
+        out_dir = os.path.join(working_dir, "shots", str(shot_idx))
+        os.makedirs(out_dir, exist_ok=True)
+        with open(os.path.join(out_dir, f"{frame_type}_refs_used.json"), "w", encoding="utf-8") as f:
+            json.dump(
+                {"n_present": n_present, "n_portrait_refs": n_portrait, "n_refs": len(records), "refs": records},
+                f, ensure_ascii=False, indent=2,
+            )
+    except Exception:
+        pass
 
 
 class Script2VideoPipeline:
@@ -1402,8 +1471,12 @@ class Script2VideoPipeline:
                 else:
                     print(f"🔍 Selecting reference images and generating prompt for first_frame of shot {first_shot_idx}...")
                     _emit_render_progress(progress, "frame_prompt_start", f"Selecting references for first frame of shot {first_shot_idx}", {"camera_idx": camera.idx, "shot_idx": first_shot_idx, "frame_type": "first_frame"})
+                    _ws_ref = _resolve_workspace_root(self.working_dir)
+                    _ref_policy = quality_ref_policy(_ws_ref)
+                    _max_ref = quality_max_reference_images(_ws_ref)
                     available_image_path_and_text_pairs = _dedupe_image_text_pairs(available_image_path_and_text_pairs)
-                    available_image_path_and_text_pairs = available_image_path_and_text_pairs[:4]  # cap refs to avoid muse2api payload hang
+                    _cand_cap = 4 if _ref_policy == "legacy" else max(4, _max_ref)
+                    available_image_path_and_text_pairs = available_image_path_and_text_pairs[:_cand_cap]  # cap refs to avoid muse2api payload hang
                     ff_selector_output = await self.reference_image_selector.select_reference_images_and_generate_prompt(
                         available_image_path_and_text_pairs=available_image_path_and_text_pairs,
                         frame_description=first_shot_desc.ff_desc
@@ -1457,12 +1530,18 @@ class Script2VideoPipeline:
                     if os.path.exists(scene_shot0_ff):
                         scene_anchor = (scene_shot0_ff, "Scene establishing environment anchor: maintain the exact same architectural location, background walls, floor/ground textures, time of day, and lighting atmosphere.")
 
+                _ws_ref = _resolve_workspace_root(self.working_dir)
+                _ref_policy = quality_ref_policy(_ws_ref)
+                _ref_limit = 2 if _ref_policy == "legacy" else quality_max_reference_images(_ws_ref)
+                _sheet_dir = None if _ref_policy == "legacy" else os.path.join(self.working_dir, "shots", str(first_shot_idx))
                 reference_image_path_and_text_pairs = _ensure_character_portraits_and_spatial_anchors(
                     pairs=raw_pairs,
                     visible_characters=vis_chars,
                     character_portraits_registry=character_portraits_registry,
                     scene_anchor_pair=scene_anchor,
-                    limit=2,
+                    limit=_ref_limit,
+                    sheet_dir=_sheet_dir,
+                    sheet_tag="first_frame",
                 )
                 prefix_prompt = ""
                 for i, (image_path, text) in enumerate(reference_image_path_and_text_pairs):
@@ -1470,6 +1549,7 @@ class Script2VideoPipeline:
                 prompt = f"{prefix_prompt}\n{prompt}"
                 prompt = _apply_series_enrichment(prompt, self.working_dir, vis_chars)
                 reference_image_paths = [item[0] for item in reference_image_path_and_text_pairs]
+                _write_refs_used(self.working_dir, first_shot_idx, "first_frame", reference_image_path_and_text_pairs, vis_chars, character_portraits_registry)
                 ff_image: ImageOutput = await self.generate_and_select_best_image(
                     prompt=prompt,
                     reference_image_paths=reference_image_paths,
@@ -1924,8 +2004,12 @@ class Script2VideoPipeline:
             else:
                 print(f"🔍 Selecting reference images and generating prompt for {frame_type} frame of shot {shot_idx}...")
                 _emit_render_progress(progress, "frame_prompt_start", f"Selecting references for {frame_type} of shot {shot_idx}", {"shot_idx": shot_idx, "frame_type": frame_type})
+                _ws_ref2 = _resolve_workspace_root(self.working_dir)
+                _ref_policy2 = quality_ref_policy(_ws_ref2)
+                _max_ref2 = quality_max_reference_images(_ws_ref2)
                 available_image_path_and_text_pairs = _dedupe_image_text_pairs(available_image_path_and_text_pairs)
-                available_image_path_and_text_pairs = available_image_path_and_text_pairs[:4]  # cap refs to avoid muse2api payload hang
+                _cand_cap2 = 4 if _ref_policy2 == "legacy" else max(4, _max_ref2)
+                available_image_path_and_text_pairs = available_image_path_and_text_pairs[:_cand_cap2]  # cap refs to avoid muse2api payload hang
                 selector_output = await self.reference_image_selector.select_reference_images_and_generate_prompt(
                     available_image_path_and_text_pairs=available_image_path_and_text_pairs,
                     frame_description=frame_desc
@@ -1938,12 +2022,18 @@ class Script2VideoPipeline:
 
             raw_pairs = selector_output["reference_image_path_and_text_pairs"]
             prompt = selector_output["text_prompt"]
+            _ws_ref3 = _resolve_workspace_root(self.working_dir)
+            _ref_policy3 = quality_ref_policy(_ws_ref3)
+            _ref_limit3 = 2 if _ref_policy3 == "legacy" else quality_max_reference_images(_ws_ref3)
+            _sheet_dir3 = None if _ref_policy3 == "legacy" else os.path.join(self.working_dir, "shots", str(shot_idx))
             reference_image_path_and_text_pairs = _ensure_character_portraits_and_spatial_anchors(
                 pairs=raw_pairs,
                 visible_characters=visible_characters,
                 character_portraits_registry=character_portraits_registry,
                 scene_anchor_pair=first_shot_ff_path_and_text_pair,
-                limit=2,
+                limit=_ref_limit3,
+                sheet_dir=_sheet_dir3,
+                sheet_tag=frame_type,
             )
             prefix_prompt = ""
             for i, (image_path, text) in enumerate(reference_image_path_and_text_pairs):
@@ -1951,6 +2041,7 @@ class Script2VideoPipeline:
             prompt = f"{prefix_prompt}\n{prompt}"
             prompt = _apply_series_enrichment(prompt, self.working_dir, visible_characters)
             reference_image_paths = [item[0] for item in reference_image_path_and_text_pairs]
+            _write_refs_used(self.working_dir, shot_idx, frame_type, reference_image_path_and_text_pairs, visible_characters, character_portraits_registry)
 
             frame_image: ImageOutput = await self.generate_and_select_best_image(
                 prompt=prompt,

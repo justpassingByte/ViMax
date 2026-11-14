@@ -60,3 +60,21 @@ trong `configs/agent.local.yaml` (hoặc đặt biến môi trường `VIMAX_QUA
 - **Tắt / lùi:** `quality.generic_linter: false` → bỏ qua linter (prompt thô, không enrichment).
   `quality.series_slug: ""` → không chèn ghi chú nhân vật. (Guard cũ đã xóa, không còn đường cũ của guard.)
 - **Test:** `pytest tests -q` → 347 passed.
+
+## Phase 03 — Sửa giới hạn ảnh mẫu (cờ `quality.ref_policy`, `quality.max_reference_images`)
+- **Thay đổi:**
+  - `utils/reference_sheet.py` (mới): `compose`/`compose_to_file` ghép portrait nhiều nhân vật thành
+    một sheet ngang có nhãn tên; `order_label` mô tả thứ tự trái→phải.
+  - `script2video_pipeline.py`: `_ensure_character_portraits_and_spatial_anchors` nhận `limit`,
+    `sheet_dir`, `sheet_tag` — khi số nhân vật > `limit-1` (non-legacy) thì ghép sheet thay vì bỏ bớt;
+    `limit` lấy từ `quality.max_reference_images` (legacy giữ 2). Bỏ cắt cứng `[:4]` trước LLM
+    (non-legacy dùng `max(4, max_reference_images)`).
+  - `_write_refs_used` (luôn bật): ghi `shots/<idx>/<frame>_refs_used.json` gồm `{path,text,role}`
+    (role: portrait|panel|scene_anchor|continuity|other) + số nhân vật/portrait — để debug sai nhân vật.
+  - `tests/test_reference_pairs.py`: 3 nhân vật max=4 → 3 portrait + anchor; max=2 → sheet + anchor;
+    legacy không ghép sheet; kích thước/thứ tự sheet; role của refs_used.
+  - `tests/test_manga2video_pipeline.py`: ghim test ref-cap cũ về `ref_policy: legacy` (giữ kiểm tra limit=2).
+- **Tắt / lùi:** `quality.ref_policy: legacy` → về đúng hành vi cũ (limit 2, không sheet).
+  `profile` (mặc định) hiện xử lý như `all_characters`; phase 05 thêm nhánh profile.
+- **Chưa làm (3.4 sâu):** retry theo provider khi muse2api treo (ghép sheet N−1) để lại cho tinh chỉnh runtime.
+- **Test:** `pytest tests -q` → 352 passed.

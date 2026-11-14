@@ -458,7 +458,7 @@ class HybridRenderingGuardsTests(unittest.IsolatedAsyncioTestCase):
             root = Path(tmp)
             cfg = root / "configs"
             cfg.mkdir()
-            (cfg / "agent.local.yaml").write_text("subtitles:\n  enabled: true\n  burn_in: true\n  language: vi\n", encoding="utf-8")
+            (cfg / "agent.local.yaml").write_text("quality:\n  ref_policy: legacy\nsubtitles:\n  enabled: true\n  burn_in: true\n  language: vi\n", encoding="utf-8")
 
             scene_dir = root / ".working_dir" / "ep1" / "manga2video" / "scene_0"
             scene_dir.mkdir(parents=True)
