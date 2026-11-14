@@ -1,7 +1,7 @@
 """Report-only duplicate-identity detection for the Manga Vision Layer.
 
 Problem this solves: the reading pass may describe the SAME character under
-two different names (e.g. "Hojin" in one panel, "Young Boy with Soccer Ball"
+two different names (e.g. "Alex" in one panel, "Young Boy with Soccer Ball"
 in another). Token overlap on permanent features is too weak to catch this
 (measured ~0.20 Jaccard for confirmed duplicates), so we compare the SEMANTIC
 similarity of the bible descriptions with embeddings and flag suspected

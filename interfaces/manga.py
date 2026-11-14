@@ -38,7 +38,7 @@ class MangaCharacterObservation(BaseModel):
         ...,
         description=(
             "Character name including distinct physical form if the character transforms, "
-            "e.g. 'Kayden (Human)' vs 'Kayden (Fat Orange Tabby Cat)'."
+            "e.g. 'Alex (Human)' vs 'Alex (Orange Tabby Cat)'."
         ),
     )
     species_or_form: str = Field(

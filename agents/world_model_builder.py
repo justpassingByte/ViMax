@@ -401,7 +401,7 @@ class WorldModelBuilder:
         )
 
         # Report-only duplicate-identity analysis (e.g. the same child the
-        # reading pass called both "Hojin" and "Young Boy with Soccer Ball").
+        # reading pass called both "Alex" and "Young Boy with Soccer Ball").
         if identity_dedup_embedder is not None:
             from agents.identity_dedup import detect_duplicate_identities
 

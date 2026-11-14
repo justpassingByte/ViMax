@@ -10,7 +10,7 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Literal
 
 from moviepy import VideoFileClip
 
-from agents.anime_director_guard import AnimeDirectorGuard
+from agents import shot_linter
 from agents.cinematic_director import CinematicDirector
 from agents.manga_reader import MangaReader
 from agents.storyboard_artist import StoryboardArtist
@@ -772,10 +772,12 @@ class Manga2VideoPipeline:
         # 3.5 Manga Vision Layer (feature-flagged): chapter-level world model
         from agent_runtime.config import manga_vision_enabled as _manga_vision_enabled
         from agent_runtime.config import quality_canon_gate as _quality_canon_gate
+        from agent_runtime.config import quality_generic_linter as _quality_generic_linter
 
         _ws_root = _resolve_workspace_root(str(work_root))
         vision_enabled = _manga_vision_enabled(_ws_root)
         canon_gate_enabled = _quality_canon_gate(_ws_root)
+        generic_linter_enabled = _quality_generic_linter(_ws_root)
         world_model = await _build_or_load_world_model(
             pipeline=self,
             manifest=manifest,
@@ -840,11 +842,12 @@ class Manga2VideoPipeline:
                 grounded=canon_gate_enabled,
             )
             if not sb_existed_before:
-                storyboard = AnimeDirectorGuard.lint_and_auto_correct_storyboard(
-                    storyboard, characters=characters
-                )
+                if generic_linter_enabled:
+                    storyboard = shot_linter.lint_and_auto_correct_storyboard(
+                        storyboard, characters=characters
+                    )
                 if callable(getattr(self.chat_model, "ainvoke", None)):
-                    pre_hints = AnimeDirectorGuard.audit_storyboard_defects(storyboard, characters=characters)
+                    pre_hints = shot_linter.audit_storyboard(storyboard, characters=characters) if generic_linter_enabled else []
                     _emit_progress(
                         sc_prog,
                         "storyboard_llm_review",
@@ -883,12 +886,13 @@ class Manga2VideoPipeline:
                 clean_storyboard = storyboard
             else:
                 clean_storyboard, _ = bind_storyboard_to_panel_anchors(storyboard, scene_beats, scene_dir)
-            clean_storyboard = [
-                sb.model_copy(
-                    update={"visual_desc": AnimeDirectorGuard.sanitize_comic_panel_artifacts(sb.visual_desc or "")}
-                )
-                for sb in clean_storyboard
-            ]
+            if generic_linter_enabled:
+                clean_storyboard = [
+                    sb.model_copy(
+                        update={"visual_desc": shot_linter.strip_comic_artifacts(sb.visual_desc or "")}
+                    )
+                    for sb in clean_storyboard
+                ]
             sb_path.write_text(
                 json.dumps([s.model_dump() for s in clean_storyboard], ensure_ascii=False, indent=2),
                 encoding="utf-8",
@@ -922,7 +926,8 @@ class Manga2VideoPipeline:
                 new_aud, t2 = _clean_refbeat_tags(sd.audio_desc)
                 if t1 or t2:
                     sd = sd.model_copy(update={"visual_desc": new_vis, "audio_desc": new_aud})
-                sd = AnimeDirectorGuard.lint_and_auto_correct_shot_description(sd, characters=characters)
+                if generic_linter_enabled:
+                    sd = shot_linter.lint_and_auto_correct_shot_description(sd, characters=characters)
                 pre_cleaned_descs.append(sd)
 
             if not shots_existed_before and callable(getattr(self.chat_model, "ainvoke", None)):
@@ -939,17 +944,18 @@ class Manga2VideoPipeline:
 
             cleaned_descs: List[ShotDescription] = []
             for sd in pre_cleaned_descs:
-                sd = sd.model_copy(
-                    update={
-                        "visual_desc": AnimeDirectorGuard.sanitize_comic_panel_artifacts(sd.visual_desc or ""),
-                        "variation_reason": AnimeDirectorGuard.sanitize_comic_panel_artifacts(getattr(sd, "variation_reason", "") or ""),
-                        "ff_desc": AnimeDirectorGuard.sanitize_comic_panel_artifacts(sd.ff_desc or ""),
-                        "lf_desc": AnimeDirectorGuard.sanitize_comic_panel_artifacts(sd.lf_desc or ""),
-                        "motion_desc": AnimeDirectorGuard.sanitize_motion_prompt_safety(
-                            AnimeDirectorGuard.sanitize_comic_panel_artifacts(sd.motion_desc or "")
-                        ),
-                    }
-                )
+                if generic_linter_enabled:
+                    sd = sd.model_copy(
+                        update={
+                            "visual_desc": shot_linter.strip_comic_artifacts(sd.visual_desc or ""),
+                            "variation_reason": shot_linter.strip_comic_artifacts(getattr(sd, "variation_reason", "") or ""),
+                            "ff_desc": shot_linter.strip_comic_artifacts(sd.ff_desc or ""),
+                            "lf_desc": shot_linter.strip_comic_artifacts(sd.lf_desc or ""),
+                            "motion_desc": shot_linter.sanitize_motion_prompt(
+                                shot_linter.strip_comic_artifacts(sd.motion_desc or "")
+                            ),
+                        }
+                    )
                 shot_file = scene_dir / "shots" / f"{sd.idx}" / "shot_description.json"
                 if shot_file.is_file():
                     shot_file.write_text(json.dumps(sd.model_dump(), ensure_ascii=False, indent=2), encoding="utf-8")

@@ -23,7 +23,7 @@ class CharacterBibleEntry(BaseModel):
 
     character_key: str = Field(
         ...,
-        description="Canonical character name matching CharacterInScene.identifier_in_scene (form-scoped, e.g. 'Kayden (Human)').",
+        description="Canonical character name matching CharacterInScene.identifier_in_scene (form-scoped, e.g. 'Alex (Human)').",
     )
     aliases: List[str] = Field(
         default_factory=list,
@@ -105,7 +105,7 @@ class SpatialEntity(BaseModel):
         description="Entity key within one beat's scene graph: a character key, 'camera', or prop label.",
     )
     entity_type: Literal["character", "object", "environment"] = Field(default="character")
-    label: str = Field(default="", description="Human-readable label, e.g. 'Kayden (Human)' or 'dumpster'.")
+    label: str = Field(default="", description="Human-readable label, e.g. 'Alex (Human)' or 'dumpster'.")
 
 
 class SpatialRelation(BaseModel):
@@ -134,7 +134,7 @@ class BeatSceneGraph(BaseModel):
     relations: List[SpatialRelation] = Field(default_factory=list)
     camera_position: str = Field(
         default="",
-        description="Author's implied camera position, e.g. 'behind Kayden (Human), low angle'.",
+        description="Author's implied camera position, e.g. 'behind Alex (Human), low angle'.",
     )
     source_page_idx: int = Field(default=0)
 

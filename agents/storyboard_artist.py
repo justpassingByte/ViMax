@@ -51,7 +51,7 @@ The user will provide the following input.
 - Clean Anime Visuals (NO Manga/Webtoon Chrome, NO Multi-Pose Clones, NO Split Panels): NEVER put speech/thought bubbles, English/Japanese comic SFX lettering (e.g. 'FLASH!', 'YAWN', 'SSS...', '... A CAT?'), radial ink tension lines, black ink sparkle marks, bright white void panel backgrounds (`plain white background` / `plain light background` — always describe softly blurred scene lighting/bokeh unless it is an explicit `white_flash` beat), dark maroon webtoon page margins/gutters, cropped comic fragment frames, or empty rectangular fade boxes into `visual_desc`. Translate every visual moment into pure continuous anime cinematography:
   * **ONE Pose & ONE Moment per Frame**: If a manga panel shows two poses of the same character (`"two overlapping poses"`, `"a second smaller pose"`, or `"character X in distance ... character X in foreground"`), NEVER clone the character twice in one shot—split them into consecutive sequential shots!
   * **NO Side-by-Side Inset Panels**: NEVER put two mini comic panels side by side on a blank background; turn each inset into its own sequential close-up shot.
-  * **Camera Variety & Outfit Integrity**: Never repeat the exact same static `cam_idx` for 4+ consecutive shots—cut to reaction close-ups or reverse angles. Keep each character's canonical outfit/accessories consistent with the scene setting (never add stray school backpacks when stepping outside at home, and never split one named character across duplicate unnamed aliases like `<Young Boy>` vs `<Hojin>`).
+  * **Camera Variety & Outfit Integrity**: Never repeat the exact same static `cam_idx` for 4+ consecutive shots—cut to reaction close-ups or reverse angles. Keep each character's canonical outfit/accessories consistent with the scene setting (never add stray school backpacks when stepping outside at home, and never split one named character across duplicate unnamed aliases like `<Young Boy>` vs `<Alex>`).
 - Dynamic Shot Duration & Editorial Pacing:
   * Kinetic action cuts (blitz, dash, strike, dodge, impact flash): 0.8s - 2.0s for crisp, high-tempo Sakuga action.
   * Momentum dissipation & landing (slide, skid, shockwave absorption): 1.8s - 3.2s.
@@ -344,9 +344,9 @@ class StoryboardArtist:
         """Run an LLM senior-director review pass to catch & repair semantic, wardrobe, alias, layout, and pacing defects."""
         import json as _json
         import logging
-        from agents.anime_director_guard import AnimeDirectorGuard
+        from agents.shot_linter import audit_storyboard
 
-        preliminary_hints = AnimeDirectorGuard.audit_storyboard_defects(storyboard, characters=characters)
+        preliminary_hints = audit_storyboard(storyboard, characters=characters)
 
         class StoryboardAuditResult(BaseModel):
             needs_repair: bool = Field(

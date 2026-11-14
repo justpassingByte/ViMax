@@ -41,3 +41,22 @@ trong `configs/agent.local.yaml` (hoặc đặt biến môi trường `VIMAX_QUA
 - **Tắt / lùi:** đặt `quality.canon_gate: false` → dùng template cũ, không chạy cổng cốt truyện,
   không giới hạn cinematic director. Cache cũ không có `source_text` vẫn chạy (dùng `line`+`vietsub`).
 - **Test:** `pytest tests -q` → 363 passed.
+
+## Phase 02 — Bộ kiểm tra dùng chung + gỡ code riêng Eleceed (cờ `quality.generic_linter`, `quality.series_slug`)
+- **Thay đổi:**
+  - `agents/shot_linter.py` (mới, không tên nhân vật): `strip_comic_artifacts`, `sanitize_motion_prompt`,
+    `detect_context_jump`, `detect_altitude_spatial_jump`, `audit_storyboard`,
+    `lint_and_auto_correct_storyboard/_shot_description` (bỏ ép góc máy, bỏ enforce nhân vật).
+  - `series/eleceed/{series.yaml,characters.yaml}` + `utils/series_bible.py`: style palette, prompt_notes,
+    wardrobe_rules theo cảnh, voice_description; không có bộ truyện → rỗng, pipeline vẫn chạy.
+  - **Xóa hẳn `agents/anime_director_guard.py`** (1302 dòng) và test của nó (theo yêu cầu người dùng).
+  - Đấu nối: `manga2video_pipeline`, `script2video_pipeline`, `storyboard_artist`, `manga_reader`
+    dùng `shot_linter` (gated `generic_linter`); chuỗi `enforce_*` thay bằng `series_bible.style_prompt()`
+    + `character_notes(name, scene_idx)` qua `_apply_series_enrichment`. Bỏ mọi nhánh cứng Kayden/Jiwoo/Hojin
+    trong anchor, keyframe video, acoustic profile (`script2video`) và map giọng (`utils/audio.py`).
+  - `tests/test_no_series_names_in_code.py`: quét agents/pipelines/utils/tools/interfaces/agent_runtime,
+    fail nếu có tên/alias trong `series/*/characters.yaml` hoặc title. Đã genericize các ví dụ docstring (Alex…).
+  - Tests mới: `test_shot_linter.py`, `test_series_bible.py`.
+- **Tắt / lùi:** `quality.generic_linter: false` → bỏ qua linter (prompt thô, không enrichment).
+  `quality.series_slug: ""` → không chèn ghi chú nhân vật. (Guard cũ đã xóa, không còn đường cũ của guard.)
+- **Test:** `pytest tests -q` → 347 passed.

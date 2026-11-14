@@ -37,7 +37,7 @@ Her finger traces the rim of the ceramic mug, following the imperfect circle ove
 
 [Guidelines]
 - Ensure that the language of all output values(not include keys) matches that used in the script.
-- Group aliases referring to the EXACT same visual form under one character entry. HOWEVER, if one entity transforms between completely incompatible physical forms or species (e.g., human warrior vs. four-legged orange cat), extract EACH physically distinct form as a SEPARATE character entry (such as "Kayden (Human)" and "Kayden (Fat Cat)") so portraits never mix incompatible anatomy.
+- Group aliases referring to the EXACT same visual form under one character entry. HOWEVER, if one entity transforms between completely incompatible physical forms or species (e.g., human warrior vs. four-legged orange cat), extract EACH physically distinct form as a SEPARATE character entry (such as "Alex (Human)" and "Alex (Beast Form)") so portraits never mix incompatible anatomy.
 - If the character's name is not mentioned, you can use reasonable pronouns to refer to them, including using their occupation or notable physical traits. For example, "the young woman" or "the barista".
 - For background characters in the script, you do not need to consider them as individual characters.
 - If a character's traits are not described or only partially outlined in the script, you need to design plausible features based on the context to make their characteristics more complete and detailed, ensuring they are vivid and evocative.

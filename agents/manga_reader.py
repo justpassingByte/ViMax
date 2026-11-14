@@ -10,7 +10,7 @@ from PIL import Image, ImageOps
 from pydantic import BaseModel, Field
 from tenacity import retry, stop_after_attempt, wait_exponential
 
-from agents.anime_director_guard import AnimeDirectorGuard
+from agents.shot_linter import detect_context_jump
 from interfaces import (
     CharacterInScene,
     MangaBeat,
@@ -37,7 +37,7 @@ Inspect the attached sequential comic page images carefully and extract a strict
 [Strict Grounding Rules]
 1. OBEY ONLY WHAT IS LITERALLY DRAWN OR WRITTEN ON THESE PAGES. Never guess plot points or character hair/clothing colors from outside memory!
 2. EXACT VISUAL FEATURES: Record exact hair colors, eye colors, fur colors & tabby stripe patterns, clothes/school uniforms/hoodies/coats, injuries, rain/lighting, and posture as literally visible. If an injured man has black hair and dark clothing on page 0, record black hair and dark clothing — NOT silver/white hair unless white hair is actually drawn.
-3. DISTINCT FORMS / SPECIES MUST BE SEPARATED: If one character has physically different forms (e.g. human form vs four-legged fat orange cat, or armored vs beast form), ALWAYS extract each physical form as a separate `MangaCharacterObservation` entry such as `"Kayden (Human)"` vs `"Kayden (Fat Orange Tabby Cat)"` with `"human"` vs `"cat (four-legged quadruped)"` in `species_or_form` and explicit posture (`"walking on all four paws, NEVER bipedal"` for animals).
+3. DISTINCT FORMS / SPECIES MUST BE SEPARATED: If one character has physically different forms (e.g. human form vs four-legged fat orange cat, or armored vs beast form), ALWAYS extract each physical form as a separate `MangaCharacterObservation` entry such as `"Alex (Human)"` vs `"Alex (Orange Tabby Cat)"` with `"human"` vs `"cat (four-legged quadruped)"` in `species_or_form` and explicit posture (`"walking on all four paws, NEVER bipedal"` for animals).
 4. COMPLETE TEXT EXTRACTION:
    - Capture EVERY speech bubble (`line_type: "spoken"`), thought/narration box/monologue (`line_type: "thought"` or `"narration"`), and visible SFX text (`sfx`).
    - Use `previous_tail_summary` ONLY to recognize a half-bubble continuing from the end of the previous batch — do NOT re-emit already completed beats from earlier pages!
@@ -577,7 +577,7 @@ class MangaReader:
                     entry["outfit"].append(obs.outfit_summary.strip())
                 entry["observations"].append((chunk.chapter, obs))
 
-        # Check which base names span multiple distinct forms (e.g. Kayden Human vs Cat)
+        # Check which base names span multiple distinct forms (e.g. a hero in human vs animal form)
         forms_per_base: Dict[str, set[str]] = {}
         for (base_key, form_cat) in grouped:
             forms_per_base.setdefault(base_key, set()).add(form_cat)
@@ -900,7 +900,7 @@ class MangaReader:
                 prev_grp = scene_groups[scene_idx - 1]
                 prev_ctx = f"{prev_grp[-1].setting} {prev_grp[-1].action_desc}"
                 curr_ctx = f"{group[0].setting} {group[0].action_desc}"
-                if AnimeDirectorGuard.detect_context_jump(prev_ctx, curr_ctx):
+                if detect_context_jump(prev_ctx, curr_ctx):
                     lines.append(f"DIRECTOR NOTE (MA & ATMOSPHERIC PACING): Context jump detected from previous scene. Maintain natural breathing room with an atmospheric establishing shot grounded strictly in this scene's setting ({setting_summary}).")
                     lines.append("")
             anchors_map: Dict[str, str] = {}

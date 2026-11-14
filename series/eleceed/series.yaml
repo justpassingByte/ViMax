@@ -1,0 +1,14 @@
+title: Eleceed
+# Style + color palette appended to keyframe prompts (moved out of code).
+style_prompt: >
+  [STYLE & COLOR PALETTE - ELECEED WEBTOON]: Render cleanly in the authentic art style
+  of the original Korean manhwa Eleceed. Faithfully preserve the character facial likeness,
+  hairstyle, skin tone, and clothing colors directly from the character turnaround portraits
+  (Image 0). Clean manhwa line art, soft natural shading, strictly faithful to the webtoon's
+  original color palette and warm lighting. Cats and animals must be drawn in cute stylized
+  manhwa art matching turnaround portraits, strictly NEVER photorealistic animals, NEVER
+  realistic 3D fur textures. Strictly NO photorealism, NO 3D CGI rendering, NO realistic
+  camera photograph textures.
+negative_prompt: >
+  photorealism, 3D CGI rendering, realistic camera photograph textures, realistic 3D fur,
+  chibi dot eyes, extra limbs, duplicate clones, speech bubbles, comic SFX lettering
