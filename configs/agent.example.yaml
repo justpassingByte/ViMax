@@ -44,6 +44,29 @@ manga_vision:
   identity_dedup_threshold: 0.82  # Ngưỡng cosine similarity để coi 2 nhân vật là "nghi trùng danh tính"
 
 
+quality:                         # Cờ nâng cấp chất lượng (incremental-quality). Mặc định = bản nâng cấp; đổi về giá trị cũ để lùi.
+  canon_gate: true               # phase 01: cổng kiểm tra bám cốt truyện (thử lại + tự sửa). false = tắt
+  generic_linter: true           # phase 02: bộ kiểm tra prompt dùng chung thay cho guard cứng. false = hành vi cũ
+  series_slug: ""                # phase 02: thư mục dữ liệu riêng của bộ truyện trong series/<slug>/ (ví dụ: eleceed)
+  ref_policy: profile            # phase 03/05: legacy | all_characters | profile — cách chọn ảnh mẫu cho shot
+  max_reference_images: 4        # phase 03: trần số ảnh mẫu gửi cho model ảnh (tự giảm nếu muse2api treo)
+  embeddings: dinov2             # phase 04: off | dinov2 — embedding ảnh để làm sạch seed/ghép nhân vật
+  text_embeddings: e5            # phase 04: off | e5 — embedding văn bản để gom cảnh/địa điểm
+  scene_split_threshold: 0.80    # phase 04: ngưỡng tương đồng khi gom/tách cảnh
+  profiles: true                 # phase 05: hồ sơ nhân vật (trang phục/trạng thái/alias)
+  profile_min_appearances: 5     # phase 05: chỉ sinh sheet cho nhân vật xuất hiện >= N beat
+  identity_qa: true              # phase 06: QA danh tính trên keyframe, làm lại trước khi tạo video
+  identity_margin: 0.15          # phase 06: biên an toàn khi so khớp danh tính
+  max_keyframe_retakes: 2        # phase 06: số lần làm lại keyframe tối đa
+  voice_mode: native_fixed       # phase 07: native | native_fixed | native_with_reference (Muse vẫn lồng tiếng)
+  shot_planner: true             # phase 08: lên góc máy theo loại beat + luật đa dạng
+  story_memory: true             # phase 09: trí nhớ cốt truyện qua các chương
+  exceptions_queue: true         # phase 10: hàng ngoại lệ cho clip/keyframe lỗi
+  max_clip_retakes: 1            # phase 10: số lần làm lại clip tối đa
+  chapter_budget_images: 0       # phase 10: trần số ảnh mỗi chương (0 = không giới hạn)
+  chapter_budget_clips: 0        # phase 10: trần số clip mỗi chương (0 = không giới hạn)
+
+
 image:
   # Chọn provider & model tạo ảnh. Ví dụ:
   # - muse2api (Local / VPS miễn phí qua Web):

@@ -102,6 +102,91 @@ class AgentConfigTests(unittest.TestCase):
                 self.assertEqual(image_api_key(tmp), "shared-key")
                 self.assertEqual(video_api_key(tmp), "shared-key")
 
+
+class QualityConfigTests(unittest.TestCase):
+    def setUp(self):
+        load_agent_config.cache_clear()
+
+    def tearDown(self):
+        load_agent_config.cache_clear()
+
+    def _write(self, tmp, section):
+        config_dir = Path(tmp) / "configs"
+        config_dir.mkdir()
+        (config_dir / "agent.local.yaml").write_text(
+            yaml.safe_dump({"quality": section} if section is not None else {}),
+            encoding="utf-8",
+        )
+
+    def test_defaults_are_the_upgraded_behaviour(self):
+        from agent_runtime import config as cfg
+        with tempfile.TemporaryDirectory() as tmp:
+            self._write(tmp, None)
+            with patch.dict(os.environ, {}, clear=True):
+                self.assertTrue(cfg.quality_canon_gate(tmp))
+                self.assertTrue(cfg.quality_generic_linter(tmp))
+                self.assertEqual(cfg.quality_series_slug(tmp), "")
+                self.assertEqual(cfg.quality_ref_policy(tmp), "profile")
+                self.assertEqual(cfg.quality_max_reference_images(tmp), 4)
+                self.assertEqual(cfg.quality_embeddings(tmp), "dinov2")
+                self.assertEqual(cfg.quality_text_embeddings(tmp), "e5")
+                self.assertAlmostEqual(cfg.quality_scene_split_threshold(tmp), 0.80)
+                self.assertTrue(cfg.quality_profiles(tmp))
+                self.assertEqual(cfg.quality_profile_min_appearances(tmp), 5)
+                self.assertTrue(cfg.quality_identity_qa(tmp))
+                self.assertAlmostEqual(cfg.quality_identity_margin(tmp), 0.15)
+                self.assertEqual(cfg.quality_max_keyframe_retakes(tmp), 2)
+                self.assertEqual(cfg.quality_voice_mode(tmp), "native_fixed")
+                self.assertTrue(cfg.quality_shot_planner(tmp))
+                self.assertTrue(cfg.quality_story_memory(tmp))
+                self.assertTrue(cfg.quality_exceptions_queue(tmp))
+                self.assertEqual(cfg.quality_max_clip_retakes(tmp), 1)
+                self.assertEqual(cfg.quality_chapter_budget_images(tmp), 0)
+                self.assertEqual(cfg.quality_chapter_budget_clips(tmp), 0)
+
+    def test_config_section_overrides_defaults(self):
+        from agent_runtime import config as cfg
+        with tempfile.TemporaryDirectory() as tmp:
+            self._write(tmp, {
+                "canon_gate": False,
+                "series_slug": "eleceed",
+                "ref_policy": "legacy",
+                "embeddings": "off",
+                "voice_mode": "native",
+                "max_reference_images": 2,
+                "identity_margin": 0.25,
+            })
+            with patch.dict(os.environ, {}, clear=True):
+                self.assertFalse(cfg.quality_canon_gate(tmp))
+                self.assertEqual(cfg.quality_series_slug(tmp), "eleceed")
+                self.assertEqual(cfg.quality_ref_policy(tmp), "legacy")
+                self.assertEqual(cfg.quality_embeddings(tmp), "off")
+                self.assertEqual(cfg.quality_voice_mode(tmp), "native")
+                self.assertEqual(cfg.quality_max_reference_images(tmp), 2)
+                self.assertAlmostEqual(cfg.quality_identity_margin(tmp), 0.25)
+
+    def test_invalid_enum_falls_back_to_default(self):
+        from agent_runtime import config as cfg
+        with tempfile.TemporaryDirectory() as tmp:
+            self._write(tmp, {"ref_policy": "bogus", "embeddings": "siglip", "voice_mode": "tts_profile"})
+            with patch.dict(os.environ, {}, clear=True):
+                self.assertEqual(cfg.quality_ref_policy(tmp), "profile")
+                self.assertEqual(cfg.quality_embeddings(tmp), "dinov2")
+                self.assertEqual(cfg.quality_voice_mode(tmp), "native_fixed")
+
+    def test_env_overrides_config(self):
+        from agent_runtime import config as cfg
+        with tempfile.TemporaryDirectory() as tmp:
+            self._write(tmp, {"canon_gate": True, "series_slug": "eleceed"})
+            with patch.dict(os.environ, {
+                "VIMAX_QUALITY_CANON_GATE": "false",
+                "VIMAX_QUALITY_SERIES_SLUG": "other",
+                "VIMAX_QUALITY_SHOT_PLANNER": "off",
+            }, clear=True):
+                self.assertFalse(cfg.quality_canon_gate(tmp))
+                self.assertEqual(cfg.quality_series_slug(tmp), "other")
+                self.assertFalse(cfg.quality_shot_planner(tmp))
+
     def test_video_provider_is_inferred_from_base_url(self):
         self.assertEqual(api_provider_from_base_url("https://openrouter.ai/api/v1"), "openrouter")
         self.assertEqual(api_provider_from_base_url("https://yunwu.ai/v1"), "yunwu")
