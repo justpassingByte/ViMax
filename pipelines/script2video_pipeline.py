@@ -2160,9 +2160,11 @@ class Script2VideoPipeline:
         characters: List[CharacterInScene],
         user_requirement: str,
         quiet: bool = False,
+        grounded: bool = False,
+        force: bool = False,
     ):
         storyboard_path = os.path.join(self.working_dir, "storyboard.json")
-        if os.path.exists(storyboard_path):
+        if os.path.exists(storyboard_path) and not force:
             with open(storyboard_path, 'r', encoding='utf-8') as f:
                 storyboard = json.load(f)
             storyboard = [ShotBriefDescription.model_validate(shot) for shot in storyboard]
@@ -2174,6 +2176,7 @@ class Script2VideoPipeline:
                 characters=characters,
                 user_requirement=user_requirement,
                 retry_timeout=240,
+                grounded=grounded,
             )
             storyboard = _normalize_model_list(storyboard, ShotBriefDescription, "storyboard")
             with open(storyboard_path, 'w', encoding='utf-8') as f:

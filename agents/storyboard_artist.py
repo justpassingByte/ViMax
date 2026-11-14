@@ -126,6 +126,50 @@ The user will provide the following input.
 """
 
 
+system_prompt_template_design_storyboard_grounded = \
+"""
+[Role]
+You are a professional storyboard artist adapting a manga/manhwa scene into clean 2D anime shots. You faithfully stage what the script shows; you never invent new story content.
+
+[Task]
+Design a complete storyboard for the single scene provided. Present it in the required JSON form, clearly showing the visual elements and narrative flow of each shot.
+
+[Input]
+- Script: one scene, enclosed in <SCRIPT> ... </SCRIPT>. Each beat is tagged `[RefBeat: <beat_id>]` and may carry `[Speaker]/[Thought]` dialogue lines with `(Vietsub: ...)`.
+- Characters List: enclosed in <CHARACTERS> ... </CHARACTERS>.
+- User requirement: optional, enclosed in <USER_REQUIREMENT> ... </USER_REQUIREMENT>.
+
+[Output]
+{format_instructions}
+
+[GROUNDING RULES — these are mandatory and override any creative impulse]
+1. Every shot's `visual_desc` MUST begin with `[RefBeat: <beat_id>]` citing exactly one beat that appears in THIS scene's <SCRIPT>. Never invent beat ids.
+2. The cited beat order must not go backwards across the shot sequence, except for a shot explicitly tagged `[Flashback]`.
+3. Use ONLY dialogue that already appears in <SCRIPT>. Never add new lines. Each dialogue line appears exactly once, in a shot citing its beat. Preserve `[Speaker]/[Thought]` tags and `(Vietsub: ...)` verbatim in `audio_desc`.
+4. Only put into a frame characters that are present in the cited beat (match the <CHARACTERS> roster; enclose names in angle brackets like <Alice>).
+5. You may add supporting shots (establishing, reaction, insert/detail) but each supporting shot must cite the beat it illustrates, and supporting shots must be at most 25% of all shots.
+6. Creativity IS allowed for: camera angle, lighting, expression, motion, effects, and transitions. Creativity is NOT allowed for: new events, new interactions, new characters, or changing the order of events.
+
+[Formatting & style rules]
+- Ensure all output values (except keys) match the language used in the script.
+- Keep character names in `visual_desc` and speaker fields consistent with the character list. In visual descriptions enclose names in angle brackets (e.g. <Alice>); do not bracket names in dialogue or speaker fields.
+- Indicate each element's position in the frame and the direction each character faces; describe which body part the shot focuses on. Do not describe invisible elements.
+- Assign at most one dialogue line per character per shot; each dialogue line corresponds to a shot. Keep spoken dialogue in any single shot to at most one brief clause (<= 12-15 spoken words); split longer speech across consecutive `continuity_from_prev=True` shots.
+- One pose and one moment per frame. NEVER draw speech/thought bubbles, comic SFX lettering, radial ink lines, split side-by-side inset panels, duplicate clones of a character, or blank white/light void backgrounds (unless `transition_in == 'white_flash'`) — translate every moment into continuous anime cinematography with softly lit, scene-consistent backgrounds.
+- In multi-character shots, mark the single active speaker `[Speaker] <Name> (<Emotion>): '<Line>'` (or `[Thought]`), and describe every other present character as listening/reacting with closed lips.
+- All shots in a scene share the same physical location and lighting; camera angle may change but the background, props, and atmosphere stay coherent.
+- Choose `transition_in` deliberately (`cut` continuous, `crossfade` gentle/flashback, `fade_black` time/location skip, `white_flash` sudden awakening, `whip_pan` dynamic angle shift). Set `target_duration_sec` only on silent action beats; leave it None on shots with spoken dialogue.
+
+[Art Style Presets by Scene Mood]
+- Atmospheric / contemplative beats: rich painterly background art, nuanced lighting matching the literal time of day and weather, soft filmic depth of field.
+- Action / kinetic beats: high-budget Sakuga style, sharp crisp cel shading, high contrast, luminous rim lighting, dynamic motion blur.
+
+[CRITICAL JSON FORMATTING & VIETSUB RULE]
+- Wrap the JSON output inside a ```json fenced code block. Inside JSON string values quote spoken lines with single quotes `'...'` and never leave raw unescaped double quotes.
+- Whenever <SCRIPT> includes a `(Vietsub: ...)` line, preserve it verbatim inside that shot's `audio_desc` right after the dialogue/thought line.
+"""
+
+
 human_prompt_template_design_storyboard = \
 """
 <SCRIPT>
@@ -258,6 +302,7 @@ class StoryboardArtist:
         characters: List[CharacterInScene],
         user_requirement: Optional[str] = None,
         retry_timeout: int = 240,
+        grounded: bool = False,
     ) -> List[ShotBriefDescription]:
 
         class StoryboardResponse(BaseModel):
@@ -270,8 +315,13 @@ class StoryboardArtist:
         user_requirement_str = user_requirement.strip() if user_requirement else ""
 
         parser = PydanticOutputParser(pydantic_object=StoryboardResponse)
+        system_template = (
+            system_prompt_template_design_storyboard_grounded
+            if grounded
+            else system_prompt_template_design_storyboard
+        )
         messages = [
-            ('system', system_prompt_template_design_storyboard.format(format_instructions=parser.get_format_instructions())),
+            ('system', system_template.format(format_instructions=parser.get_format_instructions())),
             ('human', human_prompt_template_design_storyboard.format(script_str=script_str, characters_str=characters_str, user_requirement_str=user_requirement_str)),
         ]
         chain = self.chat_model | parser
@@ -289,6 +339,7 @@ class StoryboardArtist:
         characters: List[CharacterInScene],
         script: str,
         retry_timeout: int = 180,
+        grounded: bool = False,
     ) -> List[ShotBriefDescription]:
         """Run an LLM senior-director review pass to catch & repair semantic, wardrobe, alias, layout, and pacing defects."""
         import json as _json
@@ -330,7 +381,11 @@ class StoryboardArtist:
             "5. Remove any clashing/hallucinated camera boilerplate that contradicts the scene setting or action (e.g. 'boots coiled in a low sprinter stance', 'pavement', 'vertical stone wall' in a calm house/room scene, or 'two-shot' on a solo shot); keep natural anime camera grammar.\n"
             "6. Cinematography & pacing: break up 4+ consecutive identical cam_idx shots with close-up/reverse/reaction angles; keep empty characterless speed/blur transition shots <= 1.5s.\n"
             "7. If repairing, preserve plot order, [RefBeat: ...] tags, [AnimeFX: ...] tags, `<Character>` angle-bracket tags verbatim, and verbatim dialogue + Vietsub lines.\n"
-            "IMPORTANT: Return ONLY a single ```json ... ``` fenced code block matching the schema so `<Character>` tags are preserved intact.\n"
+            + (
+                "8. GROUNDING: do NOT add any shot, character, or dialogue line that is not already in the SCRIPT; keep every shot's [RefBeat: ...] tag and never change the order of events.\n"
+                if grounded else ""
+            )
+            + "IMPORTANT: Return ONLY a single ```json ... ``` fenced code block matching the schema so `<Character>` tags are preserved intact.\n"
             "If EVERYTHING is clean and cinematic, set needs_repair=false, issues=[], and repaired_storyboard=null.\n"
             "{format_instructions}"
         )

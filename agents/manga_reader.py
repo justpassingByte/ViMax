@@ -45,6 +45,7 @@ Inspect the attached sequential comic page images carefully and extract a strict
 5. JAPANESE ANIME AUDIO + VIETSUB FAITHFULNESS:
    - `line`: Adapt the comic bubble concisely into short natural Japanese anime dialogue/monologue (romaji or Japanese, 1 brief sentence/clause <= 12 words) suitable for a native Japanese seiyuu.
    - `vietsub`: Translate the EXACT meaning and tone of that original comic bubble into natural, faithful Vietnamese (preserving humor, slang, urgency, or inner thoughts).
+   - `source_text`: Copy the ORIGINAL text inside the comic bubble verbatim (before any rewrite/translation), for fidelity checks. Leave empty only if unreadable.
 6. NORMALIZED BOUNDING BOXES (`0..1000`):
    - Set `page_idx` to the exact integer page number shown in `[Page N]` where the character or panel appears.
    - Set `crop_box_norm` to `[ymin, xmin, ymax, xmax]` in integer coordinates `0..1000` tightly framing that panel (for beats) or that character's clean face/upper-body/full-body (for character observations, avoiding overlapping speech bubbles when possible).

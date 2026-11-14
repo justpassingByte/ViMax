@@ -357,13 +357,14 @@ async def _augment_scene_script_with_vision_async(
     progress: Callable[[str, str, Dict[str, Any] | None], None] | None,
 ) -> str:
     """Async version used by ``plan_episode`` to build/apply the expansion plan."""
-    from agent_runtime.config import manga_vision_enabled, manga_vision_max_context_chars
+    from agent_runtime.config import manga_vision_enabled, manga_vision_max_context_chars, quality_canon_gate
 
     scene_script_path = scene_dir / "script.txt"
     scene_script = scene_script_path.read_text(encoding="utf-8")
     workspace_root = _resolve_workspace_root(str(scene_dir))
     if world_model is None or not manga_vision_enabled(workspace_root) or not scene_beats:
         return scene_script
+    restrict_shot_types = quality_canon_gate(workspace_root)
 
     cached_plan = None
     expansion_path = scene_dir / "expansion_plan.json"
@@ -384,6 +385,7 @@ async def _augment_scene_script_with_vision_async(
             working_dir=scene_dir,
             max_context_chars=manga_vision_max_context_chars(workspace_root),
             progress=progress,
+            restrict_shot_types=restrict_shot_types,
         )
 
     augmented = CinematicDirector.apply_expansion_to_script(scene_script, cached_plan)
@@ -508,6 +510,79 @@ async def _run_scene_visual_qa(
         {"failed_shots": report.failed_shots, "passed_shots": report.passed_shots},
     )
     return report
+
+
+async def _apply_canon_gate(
+    *,
+    storyboard,
+    scene_beats,
+    characters,
+    scene_idx: int,
+    scene_dir: Path,
+    script_pipe,
+    scene_script: str,
+    extra_req: str,
+    quiet: bool,
+    progress=None,
+):
+    """Story-fidelity gate: re-ask + deterministic repair until grounded.
+
+    Writes ``<scene>/canon_report.json`` and returns the (possibly repaired)
+    storyboard. Never raises: on any error it keeps the input storyboard so the
+    run continues.
+    """
+    try:
+        from agents.canon_gate import check_storyboard, repair_storyboard
+    except Exception as exc:  # pragma: no cover - defensive import guard
+        _emit_progress(progress, "canon_gate_skip", f"Canon gate unavailable: {exc}")
+        return storyboard
+
+    report = check_storyboard(storyboard, scene_beats, characters, scene_idx=scene_idx)
+    for _attempt in range(2):
+        if report.passed:
+            break
+        failures = "\n".join(f"- shot {i.shot_idx} [{i.kind}]: {i.detail}" for i in report.issues[:20])
+        _emit_progress(
+            progress,
+            "canon_gate_retry",
+            f"Canon gate scene {scene_idx}: {len(report.issues)} issue(s), re-designing",
+            {"issues": len(report.issues)},
+        )
+        retry_req = (
+            f"{extra_req}\n\nThe previous storyboard failed story-fidelity checks. "
+            "Fix ALL of these without inventing new content:\n" + failures
+        )
+        try:
+            storyboard = await script_pipe.design_storyboard(
+                script=scene_script,
+                characters=characters,
+                user_requirement=retry_req,
+                quiet=quiet,
+                grounded=True,
+                force=True,
+            )
+        except Exception as exc:
+            _emit_progress(progress, "canon_gate_retry_failed", f"Re-design failed: {exc}")
+            break
+        report = check_storyboard(storyboard, scene_beats, characters, scene_idx=scene_idx)
+
+    if not report.passed:
+        storyboard = repair_storyboard(storyboard, scene_beats, report, characters)
+        report = check_storyboard(storyboard, scene_beats, characters, scene_idx=scene_idx)
+        _emit_progress(
+            progress,
+            "canon_gate_repaired",
+            f"Canon gate scene {scene_idx}: deterministic repair -> passed={report.passed}",
+            {"passed": report.passed, "issues": len(report.issues)},
+        )
+
+    try:
+        (scene_dir / "canon_report.json").write_text(
+            report.model_dump_json(indent=2), encoding="utf-8"
+        )
+    except OSError:
+        pass
+    return storyboard
 
 
 class Manga2VideoPipeline:
@@ -696,8 +771,11 @@ class Manga2VideoPipeline:
 
         # 3.5 Manga Vision Layer (feature-flagged): chapter-level world model
         from agent_runtime.config import manga_vision_enabled as _manga_vision_enabled
+        from agent_runtime.config import quality_canon_gate as _quality_canon_gate
 
-        vision_enabled = _manga_vision_enabled(_resolve_workspace_root(str(work_root)))
+        _ws_root = _resolve_workspace_root(str(work_root))
+        vision_enabled = _manga_vision_enabled(_ws_root)
+        canon_gate_enabled = _quality_canon_gate(_ws_root)
         world_model = await _build_or_load_world_model(
             pipeline=self,
             manifest=manifest,
@@ -759,6 +837,7 @@ class Manga2VideoPipeline:
                 characters=characters,
                 user_requirement=extra_req,
                 quiet=quiet,
+                grounded=canon_gate_enabled,
             )
             if not sb_existed_before:
                 storyboard = AnimeDirectorGuard.lint_and_auto_correct_storyboard(
@@ -776,7 +855,25 @@ class Manga2VideoPipeline:
                         storyboard=storyboard,
                         characters=characters,
                         script=scene_script,
+                        grounded=canon_gate_enabled,
                     )
+
+            # 3.65 Story-fidelity canon gate (feature-flagged): keep the storyboard
+            # grounded in this scene's beats before [RefBeat] tags are stripped.
+            if canon_gate_enabled and scene_beats and not sb_existed_before:
+                storyboard = await _apply_canon_gate(
+                    storyboard=storyboard,
+                    scene_beats=scene_beats,
+                    characters=characters,
+                    scene_idx=sc_idx,
+                    scene_dir=scene_dir,
+                    script_pipe=script_pipe,
+                    scene_script=scene_script,
+                    extra_req=extra_req,
+                    quiet=quiet,
+                    progress=sc_prog,
+                )
+
             panel_refs_path = scene_dir / "shot_panel_refs.json"
             has_refbeat_tags = any(
                 bool(_clean_refbeat_tags(s.visual_desc)[1] or _clean_refbeat_tags(s.audio_desc)[1])

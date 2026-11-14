@@ -27,6 +27,10 @@ class MangaDialogueLine(BaseModel):
         default="",
         description="Natural Vietnamese translation faithful to the exact comic bubble.",
     )
+    source_text: str = Field(
+        default="",
+        description="Verbatim original text inside the comic speech/thought bubble, before any rewrite or translation.",
+    )
 
 
 class MangaCharacterObservation(BaseModel):
