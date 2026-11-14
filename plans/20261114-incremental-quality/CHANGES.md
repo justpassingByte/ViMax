@@ -114,3 +114,16 @@ trong `configs/agent.local.yaml` (hoặc đặt biến môi trường `VIMAX_QUA
 - **Chưa làm (để lần sau):** gom trang phục theo text-embedding thành nhiều `Outfit`; sinh sheet theo trạng thái;
   thay hẳn `_merge_series_bank`; nhánh `ref_policy: profile` đọc `outfit_at` khi chọn ảnh (hiện degrade về all_characters).
 - **Test:** `pytest tests -q` → 367 passed.
+
+## Phase 06 — QA danh tính keyframe (cờ `quality.identity_qa`, `quality.identity_margin`, `quality.max_keyframe_retakes`)
+- **Thay đổi:**
+  - `agents/identity_qa.py` (mới): `FrameCheck` schema; `check_frame` (một lượt VLM cho box/trang phục/chữ
+    + điểm danh tính embedding). Ngưỡng tự hiệu chỉnh: `baseline` = cosine trung bình giữa các ảnh mẫu của
+    chính nhân vật; rớt nếu điểm keyframe < `baseline − identity_margin`, sai số người, sai trang phục, hoặc có chữ/bong bóng.
+    `qa_and_retake_keyframes`: render→check→làm lại tối đa `max_keyframe_retakes`, rớt mãi → ghi exception.
+    Toàn bộ dependency-injected (embedder + VLM giả) → test offline, không tải model.
+  - Tests: `test_identity_qa.py` (đạt/rớt theo danh tính/chữ/trang phục; làm lại 2 lần rồi đạt → 3 lần render; rớt mãi → exception).
+- **Tắt / lùi:** `quality.identity_qa: false` → bỏ QA danh tính keyframe (giữ vòng QA cũ của manga_vision).
+- **Chưa làm (6.2/6.3 sâu):** đấu `check_frame` vào `generate_and_select_best_image` (chấm ứng viên) và
+  đổi thứ tự `render_episode` (frames→QA→full) — module đã sẵn, để tích hợp runtime lần sau.
+- **Test:** `pytest tests -q` → 372 passed.
