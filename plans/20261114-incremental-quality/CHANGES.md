@@ -78,3 +78,21 @@ trong `configs/agent.local.yaml` (hoặc đặt biến môi trường `VIMAX_QUA
   `profile` (mặc định) hiện xử lý như `all_characters`; phase 05 thêm nhánh profile.
 - **Chưa làm (3.4 sâu):** retry theo provider khi muse2api treo (ghép sheet N−1) để lại cho tinh chỉnh runtime.
 - **Test:** `pytest tests -q` → 352 passed.
+
+## Phase 04 — Embedding (cờ `quality.embeddings`, `quality.text_embeddings`, `quality.scene_split_threshold`)
+- **Thay đổi:**
+  - `tools/embeddings.py` (mới): `build_image_embedder` (dinov2-small, Apache-2.0),
+    `build_text_embedder` (multilingual-e5-small, MIT), `cosine`. Import lười
+    (torch/transformers); thiếu thư viện/model → trả `None`, pipeline vẫn chạy.
+    Cache vector theo sha1 vào `<working_dir>/embeddings/<model>/`. Chạy CPU/CUDA.
+  - `pyproject.toml`: nhóm phụ thuộc tùy chọn `embeddings = [torch, transformers, numpy]`.
+  - `agents/identity_dedup.py`: `audit_seed_crops` (trùng hash giữa nhân vật, trùng hash với panel,
+    mơ hồ danh tính qua cosine) + `filter_seed_refs` (giữ ≥1 seed/nhân vật).
+  - `agents/manga_reader.py`: `_audit_and_clean_seed_refs` chạy khi `embeddings≠off`
+    (ghi `character_seed_audit.json`, loại seed lỗi trước khi sinh portrait);
+    `build_episode_scenes` dùng cosine `setting` (E5) thay so khớp chuỗi khi `text_embeddings≠off`.
+  - `tests/test_embeddings.py`: embedder giả; builder off/unknown→None; audit bắt trùng hash/panel/mơ hồ; filter giữ 1 seed.
+- **Tắt / lùi:** `quality.embeddings: off` và `quality.text_embeddings: off` → không dùng embedding
+  (gom cảnh về so chuỗi, không làm sạch seed). Thiếu torch/model → tự về off kèm cảnh báo.
+- **Model tải về:** C cache mặc định (người dùng đã chọn). dinov2-small ~90 MB, e5-small ~470 MB.
+- **Test:** `pytest tests -q` → 358 passed.

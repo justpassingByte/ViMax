@@ -24,6 +24,7 @@ Design constraints:
 from __future__ import annotations
 
 import math
+import os
 import re
 from typing import Any, List, Optional, Sequence, Tuple
 
@@ -160,3 +161,105 @@ def detect_duplicate_identities(
 def _embedder_kind(embedder: Any) -> str:
     name = type(embedder).__name__
     return "mock" if "Mock" in name else name
+
+
+def _file_sha1(path: str) -> Optional[str]:
+    import hashlib
+    try:
+        with open(path, "rb") as f:
+            return hashlib.sha1(f.read()).hexdigest()
+    except OSError:
+        return None
+
+
+def audit_seed_crops(
+    seed_refs: dict,
+    panel_dir: Optional[str] = None,
+    image_embedder: Optional[Any] = None,
+    *,
+    ambiguous_margin: float = 0.05,
+) -> dict:
+    """Audit character seed crops for cross-character or panel duplication.
+
+    ``seed_refs``: {character_key: [image_path, ...]}.  Returns a JSON-able report
+    with ``flagged`` paths to drop. Never raises; degrades to hash-only checks when
+    no image embedder is available.
+    """
+    report: dict = {
+        "embedder": _embedder_kind(image_embedder) if image_embedder else "none",
+        "hash_duplicate_between_characters": [],
+        "hash_duplicate_with_panel": [],
+        "ambiguous_identity": [],
+        "flagged": [],
+    }
+
+    # Path -> owning character; and hash -> first (char, path) seen.
+    hash_owner: dict = {}
+    for char, paths in (seed_refs or {}).items():
+        for p in (paths or []):
+            h = _file_sha1(p)
+            if not h:
+                continue
+            if h in hash_owner:
+                owner_char, owner_path = hash_owner[h]
+                if owner_char != char:
+                    report["hash_duplicate_between_characters"].append({"a": owner_char, "b": char, "path": p})
+                    report["flagged"].append(p)
+            else:
+                hash_owner[h] = (char, p)
+
+    # Hash duplicate with a whole panel anchor.
+    if panel_dir and os.path.isdir(panel_dir):
+        panel_hashes = {}
+        for fn in os.listdir(panel_dir):
+            fp = os.path.join(panel_dir, fn)
+            h = _file_sha1(fp)
+            if h:
+                panel_hashes[h] = fn
+        for char, paths in (seed_refs or {}).items():
+            for p in (paths or []):
+                h = _file_sha1(p)
+                if h and h in panel_hashes:
+                    report["hash_duplicate_with_panel"].append({"character": char, "path": p, "panel": panel_hashes[h]})
+                    if p not in report["flagged"]:
+                        report["flagged"].append(p)
+
+    # Embedding-based ambiguity: a crop close to >= 2 character centroids.
+    if image_embedder is not None:
+        try:
+            import numpy as np
+            from tools.embeddings import cosine
+            char_vecs = {}
+            for char, paths in (seed_refs or {}).items():
+                valid = [p for p in (paths or []) if os.path.exists(p)]
+                if not valid:
+                    continue
+                vecs = image_embedder.embed_images(valid)
+                char_vecs[char] = (valid, np.asarray(vecs))
+            centroids = {c: v[1].mean(axis=0) for c, v in char_vecs.items() if len(v[1])}
+            for char, (valid, vecs) in char_vecs.items():
+                for idx, p in enumerate(valid):
+                    sims = sorted(
+                        ((other, cosine(vecs[idx], cen)) for other, cen in centroids.items()),
+                        key=lambda t: t[1], reverse=True,
+                    )
+                    if len(sims) >= 2 and sims[0][1] - sims[1][1] < ambiguous_margin and sims[1][0] != char:
+                        report["ambiguous_identity"].append({"path": p, "owner": char, "top": sims[0][0], "second": sims[1][0]})
+                        if p not in report["flagged"]:
+                            report["flagged"].append(p)
+        except Exception as exc:  # noqa: BLE001 - never fatal
+            report["embedding_error"] = str(exc)
+
+    return report
+
+
+def filter_seed_refs(seed_refs: dict, flagged_paths: Sequence[str]) -> dict:
+    """Return a copy of ``seed_refs`` with flagged paths removed (keeping >=1 per char when possible)."""
+    flagged = set(flagged_paths or [])
+    out: dict = {}
+    for char, paths in (seed_refs or {}).items():
+        kept = [p for p in (paths or []) if p not in flagged]
+        if not kept and paths:
+            kept = [paths[0]]  # never strip a character's only seed entirely
+        out[char] = kept
+    return out

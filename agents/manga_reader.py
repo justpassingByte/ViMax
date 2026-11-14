@@ -338,6 +338,74 @@ def _match_user_ref_to_character(
     return matched
 
 
+def _audit_and_clean_seed_refs(character_seed_refs, work_root):
+    """Audit seed crops (hash/panel/embedding dups) and, when quality.embeddings is on,
+    drop flagged seeds. Writes ``character_seed_audit.json``. Fail-soft: returns the input
+    unchanged on any error."""
+    try:
+        from agent_runtime.config import quality_embeddings
+        from pipelines.script2video_pipeline import _resolve_workspace_root
+        from agents.identity_dedup import audit_seed_crops, filter_seed_refs
+
+        work_root = Path(work_root)
+        ws = _resolve_workspace_root(str(work_root))
+        kind = quality_embeddings(ws)
+        embedder = None
+        if kind != "off":
+            from tools.embeddings import build_image_embedder
+            embedder = build_image_embedder(kind, cache_dir=str(work_root))
+        report = audit_seed_crops(
+            character_seed_refs,
+            panel_dir=str(work_root / "panel_anchors"),
+            image_embedder=embedder,
+        )
+        try:
+            (work_root / "character_seed_audit.json").write_text(
+                json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
+        except OSError:
+            pass
+        if kind != "off" and report.get("flagged"):
+            return filter_seed_refs(character_seed_refs, report["flagged"])
+        return character_seed_refs
+    except Exception:
+        return character_seed_refs
+
+
+def _build_setting_similarity(beats, working_dir):
+    """Return a callable ``sim(a, b) -> float`` (with ``.threshold``) using the E5 text
+    embedder, or ``None`` when text embeddings are disabled/unavailable (fail-soft)."""
+    try:
+        from agent_runtime.config import quality_text_embeddings, quality_scene_split_threshold
+        from pipelines.script2video_pipeline import _resolve_workspace_root
+        ws = _resolve_workspace_root(str(working_dir))
+        kind = quality_text_embeddings(ws)
+        threshold = quality_scene_split_threshold(ws)
+        if kind == "off":
+            return None
+        from tools.embeddings import build_text_embedder, cosine
+        embedder = build_text_embedder(kind, cache_dir=str(working_dir))
+        if embedder is None:
+            return None
+        settings = sorted({(b.setting or "").strip() for b in beats if (b.setting or "").strip()})
+        if not settings:
+            return None
+        vecs = embedder.embed_texts(settings)
+        index = {s: vecs[i] for i, s in enumerate(settings)}
+
+        def sim(a: str, b: str) -> float:
+            va = index.get((a or "").strip())
+            vb = index.get((b or "").strip())
+            if va is None or vb is None:
+                return 0.0
+            return cosine(va, vb)
+
+        sim.threshold = threshold
+        return sim
+    except Exception:
+        return None
+
+
 class MangaReader:
     def __init__(self, chat_model: Any) -> None:
         self.chat_model = chat_model
@@ -702,6 +770,8 @@ class MangaReader:
                     alias_map[spk.lower()] = spk
                     idx_counter += 1
 
+        character_seed_refs = _audit_and_clean_seed_refs(character_seed_refs, work_root)
+
         (work_root / "characters.json").write_text(
             json.dumps([c.model_dump() for c in characters], ensure_ascii=False, indent=2),
             encoding="utf-8",
@@ -855,6 +925,9 @@ class MangaReader:
         if not normalized_beats:
             raise ValueError("MangaReader extracted 0 story beats from the provided comic pages.")
 
+        # Optional text-embedding-based scene splitting (quality.text_embeddings).
+        _setting_sim = _build_setting_similarity(normalized_beats, work_root)
+
         # Group contiguous beats into manageable scene units for Script2VideoPipeline
         scene_groups: List[List[MangaBeat]] = []
         current_group: List[MangaBeat] = []
@@ -862,11 +935,15 @@ class MangaReader:
             if current_group:
                 hit_break = beat.is_scene_break and len(current_group) >= min_beats_per_scene
                 hit_chapter = beat.chapter != current_group[-1].chapter and len(current_group) >= 2
-                hit_setting_change = bool(
-                    beat.setting and current_group[-1].setting and
-                    beat.setting.strip().lower() != current_group[-1].setting.strip().lower() and
-                    len(current_group) >= min_beats_per_scene
-                )
+                prev_setting = current_group[-1].setting
+                if beat.setting and prev_setting and len(current_group) >= min_beats_per_scene:
+                    if _setting_sim is not None:
+                        # Similar settings (high cosine) stay in the same scene.
+                        hit_setting_change = _setting_sim(prev_setting, beat.setting) < _setting_sim.threshold
+                    else:
+                        hit_setting_change = beat.setting.strip().lower() != prev_setting.strip().lower()
+                else:
+                    hit_setting_change = False
                 hit_cap = len(current_group) >= max_beats_per_scene and (beat.is_scene_break or hit_setting_change or len(current_group) >= 16)
                 if hit_break or hit_chapter or hit_setting_change or hit_cap:
                     scene_groups.append(current_group)
