@@ -58,7 +58,8 @@ class OpenRouterImageGeneratorTests(unittest.IsolatedAsyncioTestCase):
 
         payload = post.await_args.kwargs["payload"]
         reference_url = payload["input_references"][0]["image_url"]["url"]
-        self.assertTrue(reference_url.startswith("data:image/png;base64,"))
+        self.assertTrue(reference_url.startswith("data:image/"))
+        self.assertIn(";base64,", reference_url)
 
     async def test_non_retryable_client_error_is_not_repeated(self):
         post = AsyncMock(return_value=(400, {"error": {"message": "bad request"}}))
@@ -104,7 +105,8 @@ class OpenRouterImageGeneratorTests(unittest.IsolatedAsyncioTestCase):
 
         payload = post.await_args.kwargs["payload"]
         self.assertEqual(payload["aspect_ratio"], "16:9")
-        self.assertTrue(payload["images"][0].startswith("data:image/png;base64,"))
+        self.assertTrue(payload["images"][0].startswith("data:image/"))
+        self.assertIn(";base64,", payload["images"][0])
 
     async def test_muse_image_and_video_generators_share_serial_concurrency_gate(self):
         import asyncio

@@ -27,6 +27,10 @@ class MangaDialogueLine(BaseModel):
         default="",
         description="Natural Vietnamese translation faithful to the exact comic bubble.",
     )
+    source_text: str = Field(
+        default="",
+        description="Verbatim original text inside the comic speech/thought bubble, before any rewrite or translation.",
+    )
 
 
 class MangaCharacterObservation(BaseModel):
@@ -34,7 +38,7 @@ class MangaCharacterObservation(BaseModel):
         ...,
         description=(
             "Character name including distinct physical form if the character transforms, "
-            "e.g. 'Kayden (Human)' vs 'Kayden (Fat Orange Tabby Cat)'."
+            "e.g. 'Alex (Human)' vs 'Alex (Orange Tabby Cat)'."
         ),
     )
     species_or_form: str = Field(
@@ -102,6 +106,10 @@ class MangaBeat(BaseModel):
         description="Sound effects depicted on the panel (e.g. 'SPPPPPT!', 'CRACK!', 'MEOW').",
     )
     mood: str = Field(default="", description="Emotional tone / pacing mood of this beat.")
+    beat_type: Optional[Literal[
+        "establishing", "dialogue", "exchange", "reaction",
+        "action", "impact", "reveal", "monologue", "transition",
+    ]] = Field(default=None, description="Narrative/cinematic beat type for rule-based shot planning.")
     is_scene_break: bool = Field(
         default=False,
         description="True when location, time of day, or distinct story scene changes cleanly at the start of this beat.",

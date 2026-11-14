@@ -1,0 +1,89 @@
+# Per-character canon data for Eleceed, moved out of agents/pipelines code.
+# - aliases: names/forms matched (case-insensitive) against roster + prompts.
+# - prompt_notes: appended to keyframe prompts when the character is present.
+# - wardrobe_rules: {from_scene, to_scene, outfit_text} (phase 05 will make these beat-state driven).
+# - voice_description: spoken-voice profile (Muse still performs the voice).
+characters:
+  - id: kayden_human
+    aliases: ["Kayden (Human)", "Kayden"]
+    prompt_notes: >
+      Kayden (human form): powerful awakened adult man, clean-shaven (strictly NO beard,
+      NO stubble), long black hair, sharp confident features. Canonical matte medium-dark
+      slate-grey hooded trench coat (muted charcoal-ash grey in shadow, shifting toward cool
+      light grey on directional/rim-lit shoulders and sleeve planes, noticeably lighter than
+      his black inner turtleneck and never pitch black), over black innerwear and trousers.
+      Keep battle scuffs, dusty crimson marks, and faint residual cyan electric sparks consistent
+      across every angle; never reset torn coat/skin to clean on rear or over-the-shoulder views.
+    voice_description: >
+      Powerful awakened adult male in his late 20s, deep resonant authoritative Japanese anime
+      baritone; confident, charismatic, proud. In heavy pain beats: extremely deep gravelly
+      guttural groan with heavy masculine chest resonance.
+
+  - id: kayden_cat
+    aliases: ["Kayden (Fat Orange Tabby Cat)", "Fat Orange Tabby Cat", "Kayden cat"]
+    prompt_notes: >
+      Kayden (cat form): a comical fat chubby round orange tabby cat with white chest/paws,
+      sharp intelligent electric-blue slit-pupil eyes, arrogant grumpy dignified scowl; stylized
+      2D manhwa, strictly NEVER a real photo of a cat, NEVER realistic 3D fur.
+    wardrobe_rules:
+      - from_scene: 0
+        to_scene: 999
+        outfit_text: >
+          [MEDICAL BANDAGES — only inside the house after rescue]: clean white medical gauze
+          bandages neatly wrapped around his plump torso, and a small gauze patch on his
+          forehead/ear, kept consistent across all frames.
+    voice_description: >
+      Comically deep, gritty, grumpy masculine adult baritone speaking from the fat orange cat;
+      arrogant, deadpan, comically serious. Strictly NOT a cute kitten meow.
+
+  - id: seo_jiwoo
+    aliases: ["Seo Jiwoo", "Jiwoo"]
+    prompt_notes: >
+      Seo Jiwoo: youthful rounded chin, short light ash-brown hair with bangs over the forehead,
+      bright expressive brown eyes, smooth clear skin. Strictly NO wounds, NO bleeding.
+    wardrobe_rules:
+      - from_scene: 0
+        to_scene: 17
+        outfit_text: >
+          Seo Jiwoo wears his canonical school uniform blazer (matching his turnaround portrait
+          in color/tone/design) over a crisp white collared shirt with a loose light blue-gray tie,
+          dark trousers, and light blue-gray backpack straps. Do not strip or recolor the blazer.
+      - from_scene: 18
+        to_scene: 999
+        outfit_text: >
+          At home, Seo Jiwoo has removed his blazer and wears ONLY the crisp white collared shirt
+          with a loose light blue-gray tie and dark trousers. Strictly NO blazer, NO suit jacket,
+          even if a reference portrait shows one.
+    voice_description: >
+      16-year-old teenage high-school boy, youthful, clear, earnest and expressive Japanese
+      anime boy voice.
+
+  - id: hojin
+    aliases: ["Hojin"]
+    prompt_notes: >
+      Hojin (young boy, ~6-7): soft rounded face, chubby cheeks, neat dark brown hair with bangs,
+      warm dark eyes, bright yellow jacket over a white t-shirt, blue denim jeans, dark navy
+      sneakers. Strictly NO striped shirt, NO chibi dot eyes, NO caricature.
+    voice_description: >
+      Young elementary-school boy (~6-7), innocent, clear young-child anime voice.
+
+  - id: hojin_mother
+    aliases: ["Hojin's Mother", "Hojin's mother"]
+    prompt_notes: >
+      Hojin's mother: elegant Korean woman in her early 30s, shoulder-length straight dark brown
+      hair with bangs, gentle features, black cardigan over a light lavender/mauve t-shirt, blue
+      jeans, white sneakers. Strictly NO beige trench coat, NO hair bun.
+    voice_description: >
+      Gentle adult woman (~30-35), warm, natural, emotional Japanese female voice.
+
+  - id: store_owner
+    aliases: ["Store Owner"]
+    prompt_notes: >
+      Store Owner: friendly middle-aged Korean man (late 40s-50s), receding thinning dark brown
+      hair, gentle laugh lines around warm smiling eyes, round nose, light grayish-blue sweater
+      over a collared shirt. Strictly NO teenage-boy face, NO thick fluffy spike hair, NO stiff
+      doll-like posture. Pet-shop interior: cool lavender-blue and light-gray modular metal gondola
+      shelving with pastel cat-food pouches under bright crisp white lighting; strictly NO rustic
+      brown wooden shelves, NO floating yellow star sparkles.
+    voice_description: >
+      Friendly warm middle-aged man, relaxed and good-natured.

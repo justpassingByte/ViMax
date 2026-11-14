@@ -10,8 +10,12 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Literal
 
 from moviepy import VideoFileClip
 
-from agents.anime_director_guard import AnimeDirectorGuard
+from agents import shot_linter
+from agents.cinematic_director import CinematicDirector
 from agents.manga_reader import MangaReader
+from agents.storyboard_artist import StoryboardArtist
+from agents.visual_qa import VisualQAReviewer
+from agents.world_model_builder import WorldModelBuilder, load_world_model
 from interfaces import (
     Camera,
     CharacterInScene,
@@ -22,8 +26,10 @@ from interfaces import (
     MangaSeriesPlan,
     ShotBriefDescription,
     ShotDescription,
+    VisualQAReport,
+    VisionWorldModel,
 )
-from pipelines.script2video_pipeline import Script2VideoPipeline, _normalize_model_list
+from pipelines.script2video_pipeline import Script2VideoPipeline, _normalize_model_list, _resolve_workspace_root
 from tools.manga_source import (
     ComicManifest,
     group_chapters_for_episodes,
@@ -239,6 +245,346 @@ def _scene_progress_scope(
     return _emit
 
 
+def _align_chunks_to_episode_scenes(
+    all_chunks: Sequence[MangaChunkExtraction],
+    beats_by_scene: Dict[int, List[MangaBeat]],
+) -> List[MangaChunkExtraction]:
+    """Rebuild canonical per-chapter chunks using post-split beat IDs from ``beats_by_scene``.
+
+    ``build_episode_scenes`` expands multi-dialogue panels into sequential beat IDs
+    (``ch01_b000..ch01_b021``). Feeding raw unsplit chunks directly into
+    ``WorldModelBuilder`` causes beat_id drift against ``scene_*/beat_map.json``.
+    """
+    ordered_beats: List[MangaBeat] = []
+    for sc_idx in sorted(beats_by_scene):
+        ordered_beats.extend(beats_by_scene[sc_idx])
+    if not ordered_beats:
+        return list(all_chunks)
+
+    notes_by_ch: Dict[int, List[str]] = {}
+    for ch in all_chunks:
+        if ch.chunk_tail_summary:
+            notes_by_ch.setdefault(ch.chapter, []).append(ch.chunk_tail_summary)
+
+    beats_by_ch: Dict[int, List[MangaBeat]] = {}
+    for beat in ordered_beats:
+        beats_by_ch.setdefault(beat.chapter, []).append(beat)
+
+    return [
+        MangaChunkExtraction(
+            chapter=ch_num,
+            beats=ch_beats,
+            chunk_tail_summary="\n".join(dict.fromkeys(notes_by_ch.get(ch_num, []))),
+        )
+        for ch_num, ch_beats in sorted(beats_by_ch.items())
+    ]
+
+
+async def _build_or_load_world_model(
+    *,
+    pipeline: "Manga2VideoPipeline",
+    manifest: ComicManifest,
+    all_chunks: List[MangaChunkExtraction],
+    characters: List[CharacterInScene],
+    character_seed_refs: Dict[str, List[str]],
+    work_root: Path,
+    progress: Callable[[str, str, Dict[str, Any] | None], None] | None,
+) -> Optional[VisionWorldModel]:
+    """Build (or reuse) the chapter-level world model when the vision layer is enabled.
+
+    Returns None when the feature flag is off — the pipeline then behaves
+    exactly as before this layer existed.
+    """
+    from agent_runtime.config import manga_vision_enabled
+
+    workspace_root = _resolve_workspace_root(str(work_root))
+    if not manga_vision_enabled(workspace_root):
+        return None
+
+    cached = load_world_model(work_root)
+    if cached is not None and (cached.beat_scene_graphs or cached.environments or cached.events):
+        _emit_progress(progress, "vision_world_cached", "Reusing cached manga vision world model")
+        return cached
+
+    if not all_chunks:
+        return None
+    _emit_progress(progress, "vision_world_build_start", "Building manga vision world model")
+    from agents.identity_dedup import build_identity_dedup_embedder
+    from agent_runtime.config import manga_vision_identity_dedup_threshold
+
+    dedup_embedder, dedup_kind = build_identity_dedup_embedder(workspace_root)
+    _emit_progress(
+        progress,
+        "vision_identity_dedup_embedder",
+        f"Identity dedup embedder: {dedup_kind}",
+        {"kind": dedup_kind},
+    )
+    builder = WorldModelBuilder(chat_model=pipeline.chat_model)
+    world_model = await builder.build_world_model(
+        chunks=all_chunks,
+        characters=characters,
+        character_seed_refs=character_seed_refs,
+        working_dir=work_root,
+        progress=progress,
+        identity_dedup_embedder=dedup_embedder,
+        identity_dedup_threshold=manga_vision_identity_dedup_threshold(workspace_root),
+    )
+    _emit_progress(
+        progress,
+        "vision_world_build_done",
+        (
+            f"World model ready: {len(world_model.characters)} characters, "
+            f"{len(world_model.environments)} environments, "
+            f"{len(world_model.beat_scene_graphs)} scene graphs, {len(world_model.events)} events"
+        ),
+        {
+            "characters": len(world_model.characters),
+            "environments": len(world_model.environments),
+            "scene_graphs": len(world_model.beat_scene_graphs),
+            "events": len(world_model.events),
+        },
+    )
+    return world_model
+
+
+async def _augment_scene_script_with_vision_async(
+    *,
+    scene_idx: int,
+    scene_dir: Path,
+    scene_beats: List[MangaBeat],
+    world_model: Optional[VisionWorldModel],
+    chat_model: Any,
+    progress: Callable[[str, str, Dict[str, Any] | None], None] | None,
+) -> str:
+    """Async version used by ``plan_episode`` to build/apply the expansion plan."""
+    from agent_runtime.config import manga_vision_enabled, manga_vision_max_context_chars, quality_canon_gate
+
+    scene_script_path = scene_dir / "script.txt"
+    scene_script = scene_script_path.read_text(encoding="utf-8")
+    workspace_root = _resolve_workspace_root(str(scene_dir))
+    if world_model is None or not manga_vision_enabled(workspace_root) or not scene_beats:
+        return scene_script
+    restrict_shot_types = quality_canon_gate(workspace_root)
+
+    cached_plan = None
+    expansion_path = scene_dir / "expansion_plan.json"
+    if expansion_path.is_file():
+        from interfaces import SceneExpansionPlan
+
+        try:
+            cached_plan = SceneExpansionPlan.model_validate(json.loads(expansion_path.read_text(encoding="utf-8")))
+        except (OSError, ValueError):
+            cached_plan = None
+
+    if cached_plan is None:
+        director = CinematicDirector(chat_model=chat_model)
+        cached_plan = await director.plan_scene_expansion(
+            scene_idx=scene_idx,
+            scene_beats=scene_beats,
+            world_model=world_model,
+            working_dir=scene_dir,
+            max_context_chars=manga_vision_max_context_chars(workspace_root),
+            progress=progress,
+            restrict_shot_types=restrict_shot_types,
+        )
+
+    augmented = CinematicDirector.apply_expansion_to_script(scene_script, cached_plan)
+    if augmented != scene_script:
+        _emit_progress(
+            progress,
+            "cinematic_script_augmented",
+            f"Scene {scene_idx} script augmented with world context & expansion directives",
+            {"scene_idx": scene_idx, "beat_directives": len(cached_plan.beat_directives)},
+        )
+    return augmented
+
+
+def _write_scene_shot_provenance(
+    *,
+    scene_idx: int,
+    scene_dir: Path,
+    clean_storyboard: List[ShotBriefDescription],
+    scene_beats: List[MangaBeat],
+    expansion_plan_json_path: Path | None,
+) -> None:
+    """Persist per-shot provenance (source beats + category) for visual QA."""
+    known_beat_ids = [b.beat_id for b in scene_beats]
+    plan = None
+    if expansion_plan_json_path is not None and expansion_plan_json_path.is_file():
+        from interfaces import SceneExpansionPlan
+
+        try:
+            plan = SceneExpansionPlan.model_validate(json.loads(expansion_plan_json_path.read_text(encoding="utf-8")))
+        except (OSError, ValueError):
+            plan = None
+
+    provenance = CinematicDirector.build_shot_provenance(
+        storyboard=clean_storyboard,
+        scene_idx=scene_idx,
+        known_beat_ids=known_beat_ids,
+        expansion_plan=plan,
+    )
+
+    # Fallback: when tags were already stripped (cached re-plan), recover beat
+    # bindings from the shot_panel_refs.json written by the previous bind pass.
+    refs_path = scene_dir / "shot_panel_refs.json"
+    if refs_path.is_file():
+        try:
+            refs_payload = json.loads(refs_path.read_text(encoding="utf-8"))
+            beat_ids_by_shot: Dict[int, List[str]] = {}
+            for shot_key, entries in refs_payload.items():
+                try:
+                    shot_idx = int(shot_key)
+                except (TypeError, ValueError):
+                    continue
+                ids = [str(e.get("beat_id", "")).strip() for e in entries if isinstance(e, dict)]
+                beat_ids_by_shot[shot_idx] = [i for i in ids if i]
+            for prov in provenance:
+                if not prov.source_beat_ids and beat_ids_by_shot.get(prov.shot_idx):
+                    prov.source_beat_ids = beat_ids_by_shot[prov.shot_idx]
+                    prov.category = "canon"
+                    prov.confidence = max(prov.confidence, 0.8)
+        except (OSError, ValueError):
+            pass
+
+    (scene_dir / "shot_provenance.json").write_text(
+        json.dumps([p.model_dump() for p in provenance], ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+
+async def _run_scene_visual_qa(
+    *,
+    pipeline: "Manga2VideoPipeline",
+    scene_idx: int,
+    scene_dir: Path,
+    progress: Callable[[str, str, Dict[str, Any] | None], None] | None,
+) -> Optional[VisualQAReport]:
+    """Report-only visual QA for one rendered scene (Manga Vision Layer).
+
+    Never raises: QA failures are logged/emitted and rendering continues.
+    Returns None when the feature flag is off or required artifacts are missing.
+    """
+    from agent_runtime.config import manga_vision_enabled, manga_vision_qa_max_frame_pairs
+
+    workspace_root = _resolve_workspace_root(str(scene_dir))
+    if not manga_vision_enabled(workspace_root):
+        return None
+
+    storyboard_path = scene_dir / "storyboard.json"
+    beat_map_path = scene_dir / "beat_map.json"
+    if not storyboard_path.is_file() or not beat_map_path.is_file():
+        return None
+
+    try:
+        storyboard = [
+            ShotBriefDescription.model_validate(s)
+            for s in json.loads(storyboard_path.read_text(encoding="utf-8"))
+        ]
+        beats = [
+            MangaBeat.model_validate(b)
+            for b in json.loads(beat_map_path.read_text(encoding="utf-8"))
+        ]
+        world_model = load_world_model(scene_dir.parent)
+    except (OSError, ValueError):
+        return None
+
+    _emit_progress(progress, "visual_qa_start", f"Visual QA review for scene {scene_idx} (report-only)")
+    try:
+        report = await VisualQAReviewer(chat_model=pipeline.chat_model).review_scene(
+            scene_idx=scene_idx,
+            scene_dir=scene_dir,
+            shot_descriptions=storyboard,
+            beats=beats,
+            world_model=world_model,
+            max_frame_pairs=manga_vision_qa_max_frame_pairs(workspace_root),
+        )
+    except Exception as exc:  # noqa: BLE001 - QA must never break rendering
+        _emit_progress(progress, "visual_qa_failed", f"Visual QA failed for scene {scene_idx}: {exc}")
+        return None
+
+    _emit_progress(
+        progress,
+        "visual_qa_done",
+        f"Visual QA scene {scene_idx}: {report.summary}",
+        {"failed_shots": report.failed_shots, "passed_shots": report.passed_shots},
+    )
+    return report
+
+
+async def _apply_canon_gate(
+    *,
+    storyboard,
+    scene_beats,
+    characters,
+    scene_idx: int,
+    scene_dir: Path,
+    script_pipe,
+    scene_script: str,
+    extra_req: str,
+    quiet: bool,
+    progress=None,
+):
+    """Story-fidelity gate: re-ask + deterministic repair until grounded.
+
+    Writes ``<scene>/canon_report.json`` and returns the (possibly repaired)
+    storyboard. Never raises: on any error it keeps the input storyboard so the
+    run continues.
+    """
+    try:
+        from agents.canon_gate import check_storyboard, repair_storyboard
+    except Exception as exc:  # pragma: no cover - defensive import guard
+        _emit_progress(progress, "canon_gate_skip", f"Canon gate unavailable: {exc}")
+        return storyboard
+
+    report = check_storyboard(storyboard, scene_beats, characters, scene_idx=scene_idx)
+    for _attempt in range(2):
+        if report.passed:
+            break
+        failures = "\n".join(f"- shot {i.shot_idx} [{i.kind}]: {i.detail}" for i in report.issues[:20])
+        _emit_progress(
+            progress,
+            "canon_gate_retry",
+            f"Canon gate scene {scene_idx}: {len(report.issues)} issue(s), re-designing",
+            {"issues": len(report.issues)},
+        )
+        retry_req = (
+            f"{extra_req}\n\nThe previous storyboard failed story-fidelity checks. "
+            "Fix ALL of these without inventing new content:\n" + failures
+        )
+        try:
+            storyboard = await script_pipe.design_storyboard(
+                script=scene_script,
+                characters=characters,
+                user_requirement=retry_req,
+                quiet=quiet,
+                grounded=True,
+                force=True,
+            )
+        except Exception as exc:
+            _emit_progress(progress, "canon_gate_retry_failed", f"Re-design failed: {exc}")
+            break
+        report = check_storyboard(storyboard, scene_beats, characters, scene_idx=scene_idx)
+
+    if not report.passed:
+        storyboard = repair_storyboard(storyboard, scene_beats, report, characters)
+        report = check_storyboard(storyboard, scene_beats, characters, scene_idx=scene_idx)
+        _emit_progress(
+            progress,
+            "canon_gate_repaired",
+            f"Canon gate scene {scene_idx}: deterministic repair -> passed={report.passed}",
+            {"passed": report.passed, "issues": len(report.issues)},
+        )
+
+    try:
+        (scene_dir / "canon_report.json").write_text(
+            report.model_dump_json(indent=2), encoding="utf-8"
+        )
+    except OSError:
+        pass
+    return storyboard
+
+
 class Manga2VideoPipeline:
     """Canon-faithful Manga / Manhwa / Webtoon to Hybrid Anime Video Pipeline."""
 
@@ -423,6 +769,40 @@ class Manga2VideoPipeline:
                 episode_title=episode_title,
             )
 
+        # 3.45 Character profiles (feature-flagged): populate draft profiles from the
+        # roster so later chapters/outfits/states are addressable. Fail-soft.
+        try:
+            from agent_runtime.config import quality_profiles as _quality_profiles
+            if _quality_profiles(_resolve_workspace_root(str(work_root))):
+                from utils.profile_store import ProfileStore
+                from utils.profile_builder import build_draft_profiles
+                from utils.series_bible import load_configured_series
+                _store = ProfileStore(str(work_root))
+                _bible = load_configured_series(_resolve_workspace_root(str(work_root)))
+                build_draft_profiles(characters, character_seed_refs, beats_by_scene, _store, _bible)
+                _emit_progress(progress, "profiles_built", f"Built draft character profiles ({len(_store.all())})")
+        except Exception as _exc:  # never block a render
+            _emit_progress(progress, "profiles_skip", f"Profile build skipped: {_exc}")
+
+        # 3.5 Manga Vision Layer (feature-flagged): chapter-level world model
+        from agent_runtime.config import manga_vision_enabled as _manga_vision_enabled
+        from agent_runtime.config import quality_canon_gate as _quality_canon_gate
+        from agent_runtime.config import quality_generic_linter as _quality_generic_linter
+
+        _ws_root = _resolve_workspace_root(str(work_root))
+        vision_enabled = _manga_vision_enabled(_ws_root)
+        canon_gate_enabled = _quality_canon_gate(_ws_root)
+        generic_linter_enabled = _quality_generic_linter(_ws_root)
+        world_model = await _build_or_load_world_model(
+            pipeline=self,
+            manifest=manifest,
+            all_chunks=_align_chunks_to_episode_scenes(all_chunks, beats_by_scene),
+            characters=characters,
+            character_seed_refs=character_seed_refs,
+            work_root=work_root,
+            progress=progress,
+        )
+
         # 4. Design scene storyboards, bind & strip [RefBeat], decompose shots, construct camera tree
         extra_req = (
             f"{user_requirement.strip()}\n"
@@ -455,13 +835,63 @@ class Manga2VideoPipeline:
             _write_chars_if_missing(scene_dir / "characters.json", characters)
             script_pipe.character_portrait_events = {c.idx: asyncio.Event() for c in characters}
 
+            # 3.6 Manga Vision Layer (feature-flagged): cinematic expansion of the
+            # in-memory scene script only — canon script.txt on disk is untouched.
+            scene_script = await _augment_scene_script_with_vision_async(
+                scene_idx=sc_idx,
+                scene_dir=scene_dir,
+                scene_beats=scene_beats,
+                world_model=world_model,
+                chat_model=self.chat_model,
+                progress=sc_prog,
+            )
+
             _emit_progress(sc_prog, "design_storyboard", f"Designing storyboard for scene {sc_idx}")
+            sb_path = scene_dir / "storyboard.json"
+            sb_existed_before = sb_path.is_file()
             storyboard = await script_pipe.design_storyboard(
                 script=scene_script,
                 characters=characters,
                 user_requirement=extra_req,
                 quiet=quiet,
+                grounded=canon_gate_enabled,
             )
+            if not sb_existed_before:
+                if generic_linter_enabled:
+                    storyboard = shot_linter.lint_and_auto_correct_storyboard(
+                        storyboard, characters=characters
+                    )
+                if callable(getattr(self.chat_model, "ainvoke", None)):
+                    pre_hints = shot_linter.audit_storyboard(storyboard, characters=characters) if generic_linter_enabled else []
+                    _emit_progress(
+                        sc_prog,
+                        "storyboard_llm_review",
+                        f"LLM director reviewing scene {sc_idx} storyboard ({len(pre_hints)} structural hint(s))",
+                        {"hints": pre_hints},
+                    )
+                    storyboard = await StoryboardArtist(chat_model=self.chat_model).review_and_repair_storyboard(
+                        storyboard=storyboard,
+                        characters=characters,
+                        script=scene_script,
+                        grounded=canon_gate_enabled,
+                    )
+
+            # 3.65 Story-fidelity canon gate (feature-flagged): keep the storyboard
+            # grounded in this scene's beats before [RefBeat] tags are stripped.
+            if canon_gate_enabled and scene_beats and not sb_existed_before:
+                storyboard = await _apply_canon_gate(
+                    storyboard=storyboard,
+                    scene_beats=scene_beats,
+                    characters=characters,
+                    scene_idx=sc_idx,
+                    scene_dir=scene_dir,
+                    script_pipe=script_pipe,
+                    scene_script=scene_script,
+                    extra_req=extra_req,
+                    quiet=quiet,
+                    progress=sc_prog,
+                )
+
             panel_refs_path = scene_dir / "shot_panel_refs.json"
             has_refbeat_tags = any(
                 bool(_clean_refbeat_tags(s.visual_desc)[1] or _clean_refbeat_tags(s.audio_desc)[1])
@@ -471,25 +901,76 @@ class Manga2VideoPipeline:
                 clean_storyboard = storyboard
             else:
                 clean_storyboard, _ = bind_storyboard_to_panel_anchors(storyboard, scene_beats, scene_dir)
-            clean_storyboard = AnimeDirectorGuard.lint_and_auto_correct_storyboard(
-                clean_storyboard, characters=characters
+            if generic_linter_enabled:
+                clean_storyboard = [
+                    sb.model_copy(
+                        update={"visual_desc": shot_linter.strip_comic_artifacts(sb.visual_desc or "")}
+                    )
+                    for sb in clean_storyboard
+                ]
+            sb_path.write_text(
+                json.dumps([s.model_dump() for s in clean_storyboard], ensure_ascii=False, indent=2),
+                encoding="utf-8",
             )
+            # 3.7 Manga Vision Layer: per-shot provenance (CANON/INFERRED/CREATIVE
+            # + source beat ids) for traceability and later visual QA.
+            if vision_enabled:
+                _write_scene_shot_provenance(
+                    scene_idx=sc_idx,
+                    scene_dir=scene_dir,
+                    clean_storyboard=clean_storyboard,
+                    scene_beats=scene_beats,
+                    expansion_plan_json_path=scene_dir / "expansion_plan.json",
+                )
             script_pipe.shot_desc_events = {sb.idx: asyncio.Event() for sb in clean_storyboard}
 
+            shots_existed_before = bool(clean_storyboard) and all(
+                (scene_dir / "shots" / f"{sb.idx}" / "shot_description.json").is_file()
+                for sb in clean_storyboard
+            )
             _emit_progress(sc_prog, "decompose_shots", f"Decomposing shot visuals for scene {sc_idx}", {"shot_count": len(clean_storyboard)})
             shot_descriptions = await script_pipe.decompose_visual_descriptions(
                 shot_brief_descriptions=clean_storyboard,
                 characters=characters,
                 quiet=quiet,
             )
-            # Guard: ensure no stale cached shot_description.json retains [RefBeat: ...] and conforms to Sakuga grammar
-            cleaned_descs: List[ShotDescription] = []
+            # Guard first, then let LLM director review & finalize before writing to disk
+            pre_cleaned_descs: List[ShotDescription] = []
             for sd in shot_descriptions:
                 new_vis, t1 = _clean_refbeat_tags(sd.visual_desc)
                 new_aud, t2 = _clean_refbeat_tags(sd.audio_desc)
                 if t1 or t2:
                     sd = sd.model_copy(update={"visual_desc": new_vis, "audio_desc": new_aud})
-                sd = AnimeDirectorGuard.lint_and_auto_correct_shot_description(sd, characters=characters)
+                if generic_linter_enabled:
+                    sd = shot_linter.lint_and_auto_correct_shot_description(sd, characters=characters)
+                pre_cleaned_descs.append(sd)
+
+            if not shots_existed_before and callable(getattr(self.chat_model, "ainvoke", None)):
+                _emit_progress(
+                    sc_prog,
+                    "shot_description_llm_review",
+                    f"LLM director reviewing decomposed keyframes for scene {sc_idx}",
+                    {"shot_count": len(pre_cleaned_descs)},
+                )
+                pre_cleaned_descs = await StoryboardArtist(chat_model=self.chat_model).review_and_repair_shot_descriptions(
+                    shot_descriptions=pre_cleaned_descs,
+                    characters=characters,
+                )
+
+            cleaned_descs: List[ShotDescription] = []
+            for sd in pre_cleaned_descs:
+                if generic_linter_enabled:
+                    sd = sd.model_copy(
+                        update={
+                            "visual_desc": shot_linter.strip_comic_artifacts(sd.visual_desc or ""),
+                            "variation_reason": shot_linter.strip_comic_artifacts(getattr(sd, "variation_reason", "") or ""),
+                            "ff_desc": shot_linter.strip_comic_artifacts(sd.ff_desc or ""),
+                            "lf_desc": shot_linter.strip_comic_artifacts(sd.lf_desc or ""),
+                            "motion_desc": shot_linter.sanitize_motion_prompt(
+                                shot_linter.strip_comic_artifacts(sd.motion_desc or "")
+                            ),
+                        }
+                    )
                 shot_file = scene_dir / "shots" / f"{sd.idx}" / "shot_description.json"
                 if shot_file.is_file():
                     shot_file.write_text(json.dumps(sd.model_dump(), ensure_ascii=False, indent=2), encoding="utf-8")
@@ -554,7 +1035,29 @@ class Manga2VideoPipeline:
 
         effective_style = style.strip() or plan.style or "2D modern Japanese anime film style"
 
-        # 1. Generate or reuse canonical anime character turnarounds
+        selected_scenes = parse_chapter_range(scene_range) if scene_range is not None else None
+
+        # 1. Generate or reuse canonical anime character turnarounds.
+        # With a scene subset, only generate turnarounds for characters that
+        # actually appear in the selected scenes (lazy per-scene portraits;
+        # full renders keep generating the whole roster).
+        portrait_characters = characters
+        if selected_scenes is not None:
+            needed: set[str] = set()
+            for scene_meta in plan.scenes:
+                if scene_meta.scene_idx not in selected_scenes:
+                    continue
+                bmap = work_root / f"scene_{scene_meta.scene_idx}" / "beat_map.json"
+                if not bmap.is_file():
+                    continue
+                try:
+                    for b in json.loads(bmap.read_text(encoding="utf-8")):
+                        needed.update(str(n) for n in b.get("characters_present", []) if n)
+                except (OSError, ValueError):
+                    continue
+            if needed:
+                portrait_characters = [c for c in characters if c.identifier_in_scene in needed]
+
         if character_portraits_registry is None:
             portrait_pipe = Script2VideoPipeline(
                 chat_model=self.chat_model,
@@ -567,7 +1070,7 @@ class Manga2VideoPipeline:
                 script="",
                 user_requirement=user_requirement,
                 style=effective_style,
-                characters=characters,
+                characters=portrait_characters,
                 quiet=quiet,
                 progress=progress,
                 character_ref_paths=character_seed_refs,
@@ -576,7 +1079,7 @@ class Manga2VideoPipeline:
         else:
             missing_visible = [
                 c
-                for c in characters
+                for c in portrait_characters
                 if getattr(c, "is_visible", True)
                 and c.identifier_in_scene not in character_portraits_registry
             ]
@@ -602,7 +1105,6 @@ class Manga2VideoPipeline:
         all_frames: List[str] = []
         scene_videos: List[str] = []
         scene_dirs: List[Path] = []
-        selected_scenes = parse_chapter_range(scene_range) if scene_range is not None else None
 
         for scene_meta in plan.scenes:
             sc_idx = scene_meta.scene_idx
@@ -611,25 +1113,74 @@ class Manga2VideoPipeline:
             scene_dir = work_root / f"scene_{sc_idx}"
             scene_dirs.append(scene_dir)
             scene_script = (scene_dir / "script.txt").read_text(encoding="utf-8")
-            sc_prog = _scene_progress_scope(progress, sc_idx)
 
-            scene_pipe = Script2VideoPipeline(
-                chat_model=self.chat_model,
-                image_generator=self.image_generator,
-                video_generator=self.video_generator,
-                working_dir=str(scene_dir),
-                num_image_candidates=self.num_image_candidates,
+            from agent_runtime.config import (
+                manga_vision_auto_rerender_critical,
+                manga_vision_enabled,
+                manga_vision_max_rerender_cycles,
             )
-            result = await scene_pipe(
-                script=scene_script,
-                user_requirement=user_requirement,
-                style=effective_style,
-                characters=characters,
-                character_portraits_registry=character_portraits_registry,
-                quiet=quiet,
-                progress=sc_prog,
-                stop_after=stop_after,
+
+            workspace_root = _resolve_workspace_root(str(work_root))
+            auto_rerender = (
+                manga_vision_enabled(workspace_root)
+                and manga_vision_auto_rerender_critical(workspace_root)
+                and stop_after in {"frames", "full"}
             )
+            max_cycles = manga_vision_max_rerender_cycles(workspace_root) if auto_rerender else 1
+
+            result = None
+            report = None
+            for cycle in range(max_cycles):
+                sc_prog = _scene_progress_scope(progress, sc_idx)
+                if cycle > 0:
+                    _emit_progress(
+                        progress,
+                        "visual_qa_rerender",
+                        f"Re-rendering failed shots for scene {sc_idx} (cycle {cycle + 1}/{max_cycles})",
+                        {"scene_idx": sc_idx, "cycle": cycle + 1},
+                    )
+                scene_pipe = Script2VideoPipeline(
+                    chat_model=self.chat_model,
+                    image_generator=self.image_generator,
+                    video_generator=self.video_generator,
+                    working_dir=str(scene_dir),
+                    num_image_candidates=self.num_image_candidates,
+                )
+                result = await scene_pipe(
+                    script=scene_script,
+                    user_requirement=user_requirement,
+                    style=effective_style,
+                    characters=characters,
+                    character_portraits_registry=character_portraits_registry,
+                    quiet=quiet,
+                    progress=sc_prog,
+                    stop_after=stop_after,
+                )
+                if stop_after in {"frames", "full"}:
+                    report = await _run_scene_visual_qa(
+                        pipeline=self,
+                        scene_idx=sc_idx,
+                        scene_dir=scene_dir,
+                        progress=sc_prog,
+                    )
+                failed = list(report.shots_with_critical_issues()) if report is not None else []
+                if not (auto_rerender and cycle + 1 < max_cycles and failed):
+                    break
+                # Delete the failed shots' frames so the next cycle regenerates them.
+                for fidx in failed:
+                    for name in ("first_frame.png", "last_frame.png"):
+                        fp = scene_dir / "shots" / str(fidx) / name
+                        try:
+                            fp.unlink(missing_ok=True)
+                        except OSError:
+                            pass
+                _emit_progress(
+                    progress,
+                    "visual_qa_rerender_shots",
+                    f"Re-rendering shots {failed} for scene {sc_idx}",
+                    {"scene_idx": sc_idx, "shots": failed},
+                )
+
             if stop_after == "frames":
                 all_frames.extend(result or [])
             else:
@@ -660,7 +1211,6 @@ class Manga2VideoPipeline:
             _emit_progress(progress, "episode_concat_done", f"Episode final video saved to {final_video_path}", {"final_video_path": str(final_video_path)})
 
         # Synchronize combined episode subtitle sidecar files without double-burning scenes
-        from pipelines.script2video_pipeline import _resolve_workspace_root
         from agent_runtime.config import subtitles_enabled, subtitles_font, subtitles_font_size, subtitles_language
 
         ws_root = _resolve_workspace_root(work_root)

@@ -90,29 +90,31 @@ class ShotSchemaAndStoryboardTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(desc.target_duration_sec, 4.0)
 
     def test_shot_requires_last_frame_covers_action_and_continuity(self):
-        s0 = ShotDescription(
-            idx=0, is_last=False, cam_idx=0, visual_desc="clash 0", variation_type="small", variation_reason="r",
+        # Small variation shots use single-frame conditioning only (deadlock/morphing fix).
+        s_small = ShotDescription(
+            idx=0, is_last=False, cam_idx=0, visual_desc="quiet close", variation_type="small", variation_reason="r",
             ff_desc="ff0", ff_vis_char_idxs=[], lf_desc="lf0", lf_vis_char_idxs=[], motion_desc="m0", audio_desc="none",
         )
-        s1 = ShotDescription(
-            idx=1, is_last=False, cam_idx=1, visual_desc="clash 1", variation_type="small", variation_reason="r",
+        # Medium/large variation shots render and lock an explicit last frame.
+        s_large = ShotDescription(
+            idx=1, is_last=False, cam_idx=1, visual_desc="camera pans across the hall", variation_type="large", variation_reason="r",
             ff_desc="ff1", ff_vis_char_idxs=[], lf_desc="lf1", lf_vis_char_idxs=[], motion_desc="m1", audio_desc="none",
-            continuity_from_prev=True,
         )
-        s2 = ShotDescription(
-            idx=2, is_last=False, cam_idx=1, visual_desc="fast slash", variation_type="small", variation_reason="r",
+        # Sakuga action-burst / vanish shots skip the last frame even at large variation.
+        s_fx = ShotDescription(
+            idx=2, is_last=False, cam_idx=1, visual_desc="[AnimeFX: ActionBurst] blitz slash", variation_type="large", variation_reason="r",
             ff_desc="ff2", ff_vis_char_idxs=[], lf_desc="lf2", lf_vis_char_idxs=[], motion_desc="m2", audio_desc="none",
-            target_duration_sec=4.0,
         )
-        s3 = ShotDescription(
-            idx=3, is_last=True, cam_idx=1, visual_desc="quiet close", variation_type="small", variation_reason="r",
+        # State transformations must use both frames regardless of variation size.
+        s_transform = ShotDescription(
+            idx=3, is_last=False, cam_idx=1, visual_desc="he begins to transform into a cat", variation_type="small", variation_reason="r",
             ff_desc="ff3", ff_vis_char_idxs=[], lf_desc="lf3", lf_vis_char_idxs=[], motion_desc="m3", audio_desc="none",
         )
-        shots = [s0, s1, s2, s3]
-        self.assertTrue(shot_requires_last_frame(shots, s0))  # s1 continuity_from_prev locks s0's last_frame
-        self.assertTrue(shot_requires_last_frame(shots, s1))  # continuity_from_prev=True
-        self.assertTrue(shot_requires_last_frame(shots, s2))  # fast action target_duration_sec <= 5.5
-        self.assertFalse(shot_requires_last_frame(shots, s3))
+        shots = [s_small, s_large, s_fx, s_transform]
+        self.assertFalse(shot_requires_last_frame(shots, s_small))   # small -> single frame
+        self.assertTrue(shot_requires_last_frame(shots, s_large))    # large -> last frame
+        self.assertFalse(shot_requires_last_frame(shots, s_fx))      # action burst -> single frame
+        self.assertTrue(shot_requires_last_frame(shots, s_transform))  # transformation -> both frames
 
     async def test_decompose_propagates_editorial_fields_and_serializes_gated_chat(self):
         from agents.storyboard_artist import StoryboardArtist, VisDescDecompositionResponse
@@ -380,8 +382,10 @@ class ContinuityGraphAndPromptTests(unittest.IsolatedAsyncioTestCase):
                 visual_desc="cat",
             ),
         ]
-        vietsubs = extract_vietsubs_from_shots(shots)
+        vietsubs = extract_vietsubs_from_shots(shots, include_attribution=False)
         self.assertEqual(vietsubs, {0: "Cậu có sao không?", 1: "Hừ."})
+        attributed = extract_vietsubs_from_shots(shots)
+        self.assertEqual(attributed, {0: 'Jiwoo: "Cậu có sao không?"', 1: 'Kayden: "Hừ."'})
         self.assertEqual(extract_all_dialogues_from_shot(shots[0].audio_desc), [("Jiwoo", "Daijoubu desu ka?")])
         self.assertEqual(extract_all_dialogues_from_shot(shots[1].audio_desc), [("Kayden", "Hmph.")])
 

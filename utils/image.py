@@ -26,17 +26,31 @@ def download_image(url, save_path):
         raise e
 
 
-def image_path_to_b64(image_path, mime: bool = True) -> str:
-    with open(image_path, 'rb') as image_file:
-        b64 = base64.b64encode(image_file.read()).decode('utf-8')
+def image_path_to_b64(image_path, mime: bool = True, max_size: int = 768) -> str:
+    try:
+        from PIL import Image
+        with Image.open(image_path) as img:
+            if img.mode != "RGB":
+                img = img.convert("RGB")
+            if max(img.size) > max_size:
+                img.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
+            buffered = BytesIO()
+            img.save(buffered, format="JPEG", quality=85, optimize=True)
+            b64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
+            if mime:
+                return f"data:image/jpeg;base64,{b64}"
+            return b64
+    except Exception:
+        with open(image_path, 'rb') as image_file:
+            b64 = base64.b64encode(image_file.read()).decode('utf-8')
 
-    if mime:
-        mime_type, _ = mimetypes.guess_type(image_path)
-        if mime_type is None:
-            mime_type = 'application/octet-stream'
-        return f"data:{mime_type};base64,{b64}"
+        if mime:
+            mime_type, _ = mimetypes.guess_type(image_path)
+            if mime_type is None:
+                mime_type = 'application/octet-stream'
+            return f"data:{mime_type};base64,{b64}"
 
-    return b64
+        return b64
 
 
 def pil_to_b64(image, mime: bool = True) -> str:

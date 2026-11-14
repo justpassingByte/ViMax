@@ -16,6 +16,23 @@ from .manga import (
 )
 from .scene import Scene
 from .shot_description import ShotDescription, ShotBriefDescription
+from .vision import (
+    BeatExpansionDirective,
+    BeatSceneGraph,
+    ChapterEvent,
+    CharacterBibleEntry,
+    EnvironmentBibleEntry,
+    ExpansionShotDirective,
+    IdentityDedupPair,
+    IdentityDedupReport,
+    SceneExpansionPlan,
+    ShotProvenance,
+    SpatialEntity,
+    SpatialRelation,
+    VisualQAIssue,
+    VisualQAReport,
+    VisionWorldModel,
+)
 from .video_output import VideoOutput
 
 __all__ = [
@@ -39,4 +56,20 @@ __all__ = [
     "ShotDescription",
     "ShotPanelAnchor",
     "VideoOutput",
+    # Manga Vision Layer
+    "BeatExpansionDirective",
+    "BeatSceneGraph",
+    "ChapterEvent",
+    "CharacterBibleEntry",
+    "EnvironmentBibleEntry",
+    "ExpansionShotDirective",
+    "IdentityDedupPair",
+    "IdentityDedupReport",
+    "SceneExpansionPlan",
+    "ShotProvenance",
+    "SpatialEntity",
+    "SpatialRelation",
+    "VisualQAIssue",
+    "VisualQAReport",
+    "VisionWorldModel",
 ]

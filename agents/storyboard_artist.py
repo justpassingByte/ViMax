@@ -48,6 +48,10 @@ The user will provide the following input.
 - When describing visual elements, it is necessary to indicate the position of the element within the frame. For example, Character A is on the left side of the frame, facing toward the right, with a table in front of him. The table is positioned slightly to the left of the center of the frame. Ensure that invisible elements are not included. For instance, do not describe someone behind a closed door if they cannot be seen.
 - Avoid unsafe content (violence, discrimination, etc.) in visual descriptions. Use indirect methods like sound, ragged clothing, or dusty crimson battle scuffs rather than graphic gore (NEVER substitute literal "ketchup").
 - Assign at most one dialogue line per character per shot. Each line of dialogue should correspond to a shot.
+- Clean Anime Visuals (NO Manga/Webtoon Chrome, NO Multi-Pose Clones, NO Split Panels): NEVER put speech/thought bubbles, English/Japanese comic SFX lettering (e.g. 'FLASH!', 'YAWN', 'SSS...', '... A CAT?'), radial ink tension lines, black ink sparkle marks, bright white void panel backgrounds (`plain white background` / `plain light background` — always describe softly blurred scene lighting/bokeh unless it is an explicit `white_flash` beat), dark maroon webtoon page margins/gutters, cropped comic fragment frames, or empty rectangular fade boxes into `visual_desc`. Translate every visual moment into pure continuous anime cinematography:
+  * **ONE Pose & ONE Moment per Frame**: If a manga panel shows two poses of the same character (`"two overlapping poses"`, `"a second smaller pose"`, or `"character X in distance ... character X in foreground"`), NEVER clone the character twice in one shot—split them into consecutive sequential shots!
+  * **NO Side-by-Side Inset Panels**: NEVER put two mini comic panels side by side on a blank background; turn each inset into its own sequential close-up shot.
+  * **Camera Variety & Outfit Integrity**: Never repeat the exact same static `cam_idx` for 4+ consecutive shots—cut to reaction close-ups or reverse angles. Keep each character's canonical outfit/accessories consistent with the scene setting (never add stray school backpacks when stepping outside at home, and never split one named character across duplicate unnamed aliases like `<Young Boy>` vs `<Alex>`).
 - Dynamic Shot Duration & Editorial Pacing:
   * Kinetic action cuts (blitz, dash, strike, dodge, impact flash): 0.8s - 2.0s for crisp, high-tempo Sakuga action.
   * Momentum dissipation & landing (slide, skid, shockwave absorption): 1.8s - 3.2s.
@@ -79,27 +83,20 @@ The user will provide the following input.
       - For climactic combat standoffs or life-or-death confrontations, tag `[AnimeFX: Letterbox]` for 2.39:1 widescreen cinema bars.
     * **Cinematic Breathing Room & Full Pacing**:
       - Let establishing shots and character dialogues play with full breathing room (~6.0–8.0 seconds). NEVER compress shots into frantic 2-second fragments that discard dialogue tails or atmospheric pauses.
-- Anime Adaptation & Kinetic Deceleration (Chuyển thể Điện ảnh hóa Động lực học & Tuyệt đối CẤM Tiếp đất Tĩnh 1:1):
-  - NEVER copy static 2D manhwa landing poses directly (e.g. cutting abruptly to a character already sitting/kneeling on the ground). That produces a lifeless, cheap motion comic!
-  - In high-budget Sakuga anime (Ufotable, MAPPA, Wit Studio), every arrival, landing, or crash is an active sequence of KINETIC MOMENTUM DISSIPATION:
-    * **High-Altitude Descents & Crash Landings (Giáng thế & Va chạm tiếp đất)**:
-      Must ALWAYS be directed across a multi-cut descending camera bridge:
-      1. *High Sky Descent*: Distant blazing streak tearing across clouds from high altitude.
-      2. *Swooping Tracking Cut*: Dynamic camera rapidly swooping low over rooftops, tracking the trajectory diving toward the destination.
-      3. *Impact Flash & Ground Shockwave*: Extreme low ground-level / worm's-eye Dutch angle on wet asphalt/earth: Blinding impact explosion, sparks/debris blasting outward, steam and shockwave rippling across walls.
-      4. *Kinetic Friction Skid & Recovery*: Tilted Dutch wide/medium shot from behind: The character slides on boots/knees along the pavement dissipating immense momentum, one trembling hand clawing the wall/ground for support, residual energy/steam fizzling out, ragged breathing.
-      5. *Pained / Exhausted Monologue*: Dramatic Dutch close-up on gritted teeth, dripping sweat/blood scuffs, hand trembling on wall.
-    * **High-Speed Deceleration & Touchdown (Tiếp đất & Giảm tốc sau di chuyển nhanh)**:
-      1. *Footwear Friction Skid Cut*: Low-angle shot along the ground: Character's footwear slides hard across the surface kicking up friction dust and smoke, clothing whipping forward from intense inertia!
-      2. *Protective Pivot & Wind Shockwave*: Subject pivots low to absorb momentum, air displacement swirling dust and debris outward!
-      3. *Controlled Settle & Relief*: Only after momentum is fully dissipated does the character drop to one knee or plant feet firmly, settling into recovery as adrenaline fades.
-- Dramatic Camera Mapping & Angle Pacing (Quy chuẩn góc máy điện ảnh bắt buộc):
-  - NEVER repeat eye-level medium shots consecutively. Vary camera heights and angles dynamically to guide audience emotions:
-    * **Extreme Close-Up on Eyes**: Used at the moment of sudden horror, panic, or awakened realization (e.g. pupils shrinking, light reflection, sweat bead on temple).
-    * **High Overhead Angle / Bird's Eye**: Used to frame a solitary helpless victim on the ground/street, emphasizing vulnerability and scale before the looming hazard.
-    * **Dynamic Low-Angle 3/4 Perspective**: Looking up from asphalt at sidewalk curb to frame the protagonist dropping into a coiled sprinter launch stance, making them look powerful and heroic.
-    * **Dutch Angle / Slanted Tilt**: Used when the vehicle/hazard hurtles toward the screen, tilting the horizon to induce disorientation and impending danger.
-    * **Overhead Aftermath & Wide Safe Zone**: Cutting to a top-down view showing the hazard skidding across the EMPTY road, and a tight corner sidewalk view showing safe touchdown.
+- Anime Adaptation, Clean Cut Economy & Kinetic Deceleration:
+  - Keep pacing simple, crisp, and legible—do NOT over-stuff scenes with repetitive poses or invented transitional padding.
+  - **Minimalist Transition Cuts (Sky Streaks -> Aftermath)**: When `<SCRIPT>` shows a streak in the sky and cuts to a character's aftermath location without an explicit ground-impact beat, transition cleanly (using `"fade_black"` or `"crossfade"`) straight into the aftermath setting—NEVER invent extra ground explosion bursts, rooftop swoops, or redundant kneeling shots.
+  - Only when `<SCRIPT>` explicitly depicts an active crash landing, heavy skid, or high-speed clash should you pace the physical deceleration smoothly across clear sequential beats:
+    1. *Touchdown Friction / Skid*: Low-angle shot showing momentum dissipation and sparks/dust.
+    2. *Settling Reaction*: Character bracing against wall/ground, followed cleanly by distinct framing (e.g. side-profile close-up) for any dialogue/panting line so back-to-back shots never repeat identical rear poses.
+  - **Outerwear Value & Directional Lighting**: When describing grey/charcoal outerwear (such as a matte slate-grey coat), keep tonal separation from black hair/innerwear and specify how directional/rim light lifts lit coat planes toward cool light grey instead of crushing the coat to pitch black.
+- Dramatic Camera Mapping & Angle Pacing (Quy chuẩn góc máy điện ảnh bắt buộc - CẤM GÓC MÁY NGANG TẦM MẮT VÀ CẤM NGHIÊNG DÁNG NHÂN VẬT):
+  - BAN EYE-LEVEL FLAT FRAMING & SLANTED POSES (TUYỆT ĐỐI CẤM GÓC MÁY NGANG TẦM MẮT / MEDIUM SHOT PHẲNG VÀ CẤM DÁNG ĐỨNG XIÊU VẸO). In anime directing, every camera angle must express emotional tension and physical scale dynamically:
+    * **Dramatic Steep Low-Angle Worm's-Eye View (Góc máy sát đất hắt lên)**: Camera positioned low on the wet pavement looking steeply up at the character, with combat boots planted in the lower foreground, vertical walls rising straight into the dark sky, and body hunched forward in deep exhaustion—never tilting or slanting the character's body diagonally.
+    * **Ground-Level Low-Angle Tracking (Góc máy thấp lia theo mặt đường)**: Camera placed low near the asphalt/earth, tracking dragging boots, footwear friction, and ragged coat hems in linear perspective.
+    * **Dramatic Low-Angle Over-The-Shoulder POV**: Framed from low near the ground behind the character looking past toward targets/allies.
+    * **Extreme Close-Up on Eyes / Gritted Teeth**: Focusing tightly on dilated pupils, gritted jaw, sweating brow, or bloodied hands gripping stone.
+    * **High Overhead Angle / Bird's Eye**: Used to frame solitary vulnerability against the wide environment.
 - Art Style Presets by Scene Mood (Điều phối phong cách mỹ thuật theo cảm xúc):
   - **Atmospheric / Contemplative Preset (Quiet / Emotional / Transition Beats)**:
     For peaceful transitions and environmental atmosphere, describe: *Rich painterly background art, nuanced environmental lighting matching the literal time of day and weather, subtle atmospheric particle physics, soft filmic depth of field*.
@@ -126,6 +123,50 @@ The user will provide the following input.
 - CRITICAL JSON FORMATTING & VIETSUB RULE:
   - Wrap the valid JSON output inside a ```json fenced code block. Inside JSON string values, quote spoken lines with single quotes `'...'` (or properly escaped `\"`) and NEVER leave raw unescaped double quotes inside strings.
   - Whenever `<SCRIPT>` includes a `(Vietsub: ...)` line for a beat or dialogue, ALWAYS preserve `(Vietsub: ...)` verbatim inside that shot's `audio_desc` right after the dialogue/thought line.
+"""
+
+
+system_prompt_template_design_storyboard_grounded = \
+"""
+[Role]
+You are a professional storyboard artist adapting a manga/manhwa scene into clean 2D anime shots. You faithfully stage what the script shows; you never invent new story content.
+
+[Task]
+Design a complete storyboard for the single scene provided. Present it in the required JSON form, clearly showing the visual elements and narrative flow of each shot.
+
+[Input]
+- Script: one scene, enclosed in <SCRIPT> ... </SCRIPT>. Each beat is tagged `[RefBeat: <beat_id>]` and may carry `[Speaker]/[Thought]` dialogue lines with `(Vietsub: ...)`.
+- Characters List: enclosed in <CHARACTERS> ... </CHARACTERS>.
+- User requirement: optional, enclosed in <USER_REQUIREMENT> ... </USER_REQUIREMENT>.
+
+[Output]
+{format_instructions}
+
+[GROUNDING RULES — these are mandatory and override any creative impulse]
+1. Every shot's `visual_desc` MUST begin with `[RefBeat: <beat_id>]` citing exactly one beat that appears in THIS scene's <SCRIPT>. Never invent beat ids.
+2. The cited beat order must not go backwards across the shot sequence, except for a shot explicitly tagged `[Flashback]`.
+3. Use ONLY dialogue that already appears in <SCRIPT>. Never add new lines. Each dialogue line appears exactly once, in a shot citing its beat. Preserve `[Speaker]/[Thought]` tags and `(Vietsub: ...)` verbatim in `audio_desc`.
+4. Only put into a frame characters that are present in the cited beat (match the <CHARACTERS> roster; enclose names in angle brackets like <Alice>).
+5. You may add supporting shots (establishing, reaction, insert/detail) but each supporting shot must cite the beat it illustrates, and supporting shots must be at most 25% of all shots.
+6. Creativity IS allowed for: camera angle, lighting, expression, motion, effects, and transitions. Creativity is NOT allowed for: new events, new interactions, new characters, or changing the order of events.
+
+[Formatting & style rules]
+- Ensure all output values (except keys) match the language used in the script.
+- Keep character names in `visual_desc` and speaker fields consistent with the character list. In visual descriptions enclose names in angle brackets (e.g. <Alice>); do not bracket names in dialogue or speaker fields.
+- Indicate each element's position in the frame and the direction each character faces; describe which body part the shot focuses on. Do not describe invisible elements.
+- Assign at most one dialogue line per character per shot; each dialogue line corresponds to a shot. Keep spoken dialogue in any single shot to at most one brief clause (<= 12-15 spoken words); split longer speech across consecutive `continuity_from_prev=True` shots.
+- One pose and one moment per frame. NEVER draw speech/thought bubbles, comic SFX lettering, radial ink lines, split side-by-side inset panels, duplicate clones of a character, or blank white/light void backgrounds (unless `transition_in == 'white_flash'`) — translate every moment into continuous anime cinematography with softly lit, scene-consistent backgrounds.
+- In multi-character shots, mark the single active speaker `[Speaker] <Name> (<Emotion>): '<Line>'` (or `[Thought]`), and describe every other present character as listening/reacting with closed lips.
+- All shots in a scene share the same physical location and lighting; camera angle may change but the background, props, and atmosphere stay coherent.
+- Choose `transition_in` deliberately (`cut` continuous, `crossfade` gentle/flashback, `fade_black` time/location skip, `white_flash` sudden awakening, `whip_pan` dynamic angle shift). Set `target_duration_sec` only on silent action beats; leave it None on shots with spoken dialogue.
+
+[Art Style Presets by Scene Mood]
+- Atmospheric / contemplative beats: rich painterly background art, nuanced lighting matching the literal time of day and weather, soft filmic depth of field.
+- Action / kinetic beats: high-budget Sakuga style, sharp crisp cel shading, high contrast, luminous rim lighting, dynamic motion blur.
+
+[CRITICAL JSON FORMATTING & VIETSUB RULE]
+- Wrap the JSON output inside a ```json fenced code block. Inside JSON string values quote spoken lines with single quotes `'...'` and never leave raw unescaped double quotes.
+- Whenever <SCRIPT> includes a `(Vietsub: ...)` line, preserve it verbatim inside that shot's `audio_desc` right after the dialogue/thought line.
 """
 
 
@@ -181,6 +222,7 @@ Additionally, you will receive a sequence of potential characters, each containi
 (2) 'medium' cases often involve the introduction of new characters and a character turns from the back to face the front (facing the camera).
 (3) 'small' cases usually involve minor changes, such as expression changes, movement and pose changes of existing characters(e.g., walking, sitting down, standing up), moderate camera movements(e.g., pan, tilt, track).
 - CRITICAL KEYFRAME ANCHORING RULE FOR ANIME ACTION: Any shot involving combat clashes, dodging, leaping, knocking back, falling, teleporting, projectile blasts, environmental destruction, or major pose/camera shifts MUST be labeled 'medium' or 'large' (NEVER 'small'), with clearly distinct starting pose (`ff_desc`) and climax/impact pose (`lf_desc`), so both `first_frame` and `last_frame` keyframes anchor the motion. Reserve 'small' strictly for quiet dialogue, subtle breathing, blinking, or gentle camera holds.
+- CINEMATIC CAMERA ANGLE PRESERVATION: The first and last frame descriptions must strictly preserve dynamic angles (low-angle worm's-eye, canted Dutch angle, ground tracking). NEVER flatten or downgrade dynamic angles into generic 'medium shot' or 'eye-level shot' in ff_desc or lf_desc.
 - When describing a character, it is necessary to indicate the direction they are facing.
 - The first shot must establish the overall scene environment, using the widest possible shot.
 - Use as few camera positions as possible.
@@ -260,6 +302,7 @@ class StoryboardArtist:
         characters: List[CharacterInScene],
         user_requirement: Optional[str] = None,
         retry_timeout: int = 240,
+        grounded: bool = False,
     ) -> List[ShotBriefDescription]:
 
         class StoryboardResponse(BaseModel):
@@ -272,8 +315,13 @@ class StoryboardArtist:
         user_requirement_str = user_requirement.strip() if user_requirement else ""
 
         parser = PydanticOutputParser(pydantic_object=StoryboardResponse)
+        system_template = (
+            system_prompt_template_design_storyboard_grounded
+            if grounded
+            else system_prompt_template_design_storyboard
+        )
         messages = [
-            ('system', system_prompt_template_design_storyboard.format(format_instructions=parser.get_format_instructions())),
+            ('system', system_template.format(format_instructions=parser.get_format_instructions())),
             ('human', human_prompt_template_design_storyboard.format(script_str=script_str, characters_str=characters_str, user_requirement_str=user_requirement_str)),
         ]
         chain = self.chat_model | parser
@@ -284,6 +332,190 @@ class StoryboardArtist:
         storyboard = response.storyboard
 
         return storyboard
+
+    async def review_and_repair_storyboard(
+        self,
+        storyboard: List[ShotBriefDescription],
+        characters: List[CharacterInScene],
+        script: str,
+        retry_timeout: int = 180,
+        grounded: bool = False,
+    ) -> List[ShotBriefDescription]:
+        """Run an LLM senior-director review pass to catch & repair semantic, wardrobe, alias, layout, and pacing defects."""
+        import json as _json
+        import logging
+        from agents.shot_linter import audit_storyboard
+
+        preliminary_hints = audit_storyboard(storyboard, characters=characters)
+
+        class StoryboardAuditResult(BaseModel):
+            needs_repair: bool = Field(
+                description="True if ANY defect was found (multi-pose clones, split panels, blank white void, wardrobe/prop drift vs CHARACTERS/SCRIPT, duplicate/phantom character aliases, monotonous 4+ identical cam_idx, or empty blur transition > 1.5s); False if clean."
+            )
+            issues: List[str] = Field(
+                default_factory=list,
+                description="Concise list of defects found, or empty list if needs_repair is False.",
+            )
+            repaired_storyboard: Optional[List[ShotBriefDescription]] = Field(
+                default=None,
+                description="Complete repaired storyboard (re-indexed 0..N-1) ONLY when needs_repair is True; set to null when needs_repair is False.",
+            )
+
+        parser = PydanticOutputParser(pydantic_object=StoryboardAuditResult)
+        characters_str = "\n".join(
+            [
+                f"Character {c.idx} ({c.identifier_in_scene}): static={c.static_features}; dynamic={c.dynamic_features}"
+                for c in characters
+            ]
+        )
+        current_json = _json.dumps([s.model_dump() for s in storyboard], ensure_ascii=False, indent=2)
+        hints_str = "\n".join(f"- {d}" for d in preliminary_hints) if preliminary_hints else "(none)"
+
+        critic_system = (
+            "You are a senior anime episode director auditing a draft storyboard BEFORE keyframe generation.\n"
+            "Evaluate the ENTIRE storyboard dynamically against CHARACTERS, SCRIPT, and any PRELIMINARY_HINTS:\n"
+            "1. NO multi-pose character clones or same-character distance+foreground duplicates in one frame — split into separate single-view sequential anime shots (re-index idx 0..N-1).\n"
+            "2. NO split side-by-side comic inset panels or manga decorative radial ink/sparkle marks.\n"
+            "3. NO stark blank white/light void backgrounds (unless transition_in == 'white_flash') — use softly blurred scene-consistent lighting/bokeh.\n"
+            "4. STRICT character identity, wardrobe & prop consistency against CHARACTERS and SCRIPT: fix wrong outfits, stray outdoor props indoors, dropped/missing character names (e.g. broken \"inside 's house\" or \"of is visible\" -> restore the full `<Character>` name), or phantom/duplicate alias characters.\n"
+            "5. Remove any clashing/hallucinated camera boilerplate that contradicts the scene setting or action (e.g. 'boots coiled in a low sprinter stance', 'pavement', 'vertical stone wall' in a calm house/room scene, or 'two-shot' on a solo shot); keep natural anime camera grammar.\n"
+            "6. Cinematography & pacing: break up 4+ consecutive identical cam_idx shots with close-up/reverse/reaction angles; keep empty characterless speed/blur transition shots <= 1.5s.\n"
+            "7. If repairing, preserve plot order, [RefBeat: ...] tags, [AnimeFX: ...] tags, `<Character>` angle-bracket tags verbatim, and verbatim dialogue + Vietsub lines.\n"
+            + (
+                "8. GROUNDING: do NOT add any shot, character, or dialogue line that is not already in the SCRIPT; keep every shot's [RefBeat: ...] tag and never change the order of events.\n"
+                if grounded else ""
+            )
+            + "IMPORTANT: Return ONLY a single ```json ... ``` fenced code block matching the schema so `<Character>` tags are preserved intact.\n"
+            "If EVERYTHING is clean and cinematic, set needs_repair=false, issues=[], and repaired_storyboard=null.\n"
+            "{format_instructions}"
+        )
+        critic_human = (
+            "=== PRELIMINARY_HINTS ===\n{hints_str}\n\n"
+            "=== CURRENT_STORYBOARD ===\n{current_json}\n\n"
+            "=== CHARACTERS ===\n{characters_str}\n\n"
+            "=== SCRIPT ===\n{script_str}"
+        )
+        messages = [
+            ("system", critic_system.format(format_instructions=parser.get_format_instructions())),
+            (
+                "human",
+                critic_human.format(
+                    hints_str=hints_str,
+                    current_json=current_json,
+                    characters_str=characters_str,
+                    script_str=script.strip(),
+                ),
+            ),
+        ]
+        def _has_dropped_tag_grammar(shots_list: List[ShotBriefDescription]) -> bool:
+            for sh in shots_list:
+                v = sh.visual_desc or ""
+                if re.search(r"(?:^|\s)'s\b|\bof\s+is\s+visible\b|\bfaces\s*\.", v) or re.search(
+                    r"(?:^|\.\s+)(?:sits|stands|has|wears|looks|holds|turns)\b", v
+                ):
+                    return True
+            return False
+
+        import re
+
+        try:
+            chain = self.chat_model | parser
+            response: StoryboardAuditResult = await asyncio.wait_for(
+                chain.ainvoke(messages),
+                timeout=retry_timeout,
+            )
+            if response.needs_repair and response.repaired_storyboard:
+                repaired = response.repaired_storyboard
+                if _has_dropped_tag_grammar(repaired):
+                    # Retry once explicitly reminding the model to keep ```json fences so web DOM proxies don't eat <Name> tags
+                    retry_msgs = messages + [
+                        (
+                            "human",
+                            "Your previous JSON dropped a `<Character>` name (leaving broken grammar like \"'s \" or \"sits on\"). "
+                            "Re-emit the repaired JSON inside a single ```json ... ``` code block and keep every character's full name intact.",
+                        )
+                    ]
+                    retry_resp: StoryboardAuditResult = await asyncio.wait_for(
+                        chain.ainvoke(retry_msgs),
+                        timeout=retry_timeout,
+                    )
+                    if retry_resp.needs_repair and retry_resp.repaired_storyboard and not _has_dropped_tag_grammar(retry_resp.repaired_storyboard):
+                        repaired = retry_resp.repaired_storyboard
+                print(f"[storyboard_llm_repaired] Fixed {len(response.issues)} issue(s): {response.issues}")
+                logging.info("Storyboard LLM critic repaired %d issue(s): %s", len(response.issues), response.issues)
+                return repaired
+            print("[storyboard_llm_clean] needs_repair=False")
+        except Exception as exc:
+            print(f"[storyboard_llm_fallback] {exc}")
+            logging.warning("Storyboard self-review repair failed (%s); keeping deterministic guard output.", exc)
+        return storyboard
+
+    async def review_and_repair_shot_descriptions(
+        self,
+        shot_descriptions: List[ShotDescription],
+        characters: List[CharacterInScene],
+        retry_timeout: int = 180,
+    ) -> List[ShotDescription]:
+        """Run a scene-level LLM critic over decomposed shot_descriptions (ff_desc/lf_desc/motion_desc/char_idxs)."""
+        import json as _json
+        import logging
+
+        if not shot_descriptions:
+            return shot_descriptions
+
+        class ShotDescriptionAuditResult(BaseModel):
+            needs_repair: bool = Field(
+                description="True if any ff_desc/lf_desc/motion_desc/variation_reason or ff_vis_char_idxs/lf_vis_char_idxs violates canonical <CHARACTERS> outfits/identities, duplicates alias characters, or retains comic artifacts."
+            )
+            issues: List[str] = Field(
+                default_factory=list,
+                description="Concise list of shot-level defects found, or empty list if clean.",
+            )
+            repaired_shots: Optional[List[ShotDescription]] = Field(
+                default=None,
+                description="Full corrected ShotDescription list ONLY when needs_repair is True; set to null when clean.",
+            )
+
+        parser = PydanticOutputParser(pydantic_object=ShotDescriptionAuditResult)
+        characters_str = "\n".join(
+            [
+                f"idx={c.idx} | name={c.identifier_in_scene} | visible={c.is_visible} | static={c.static_features} | dynamic={c.dynamic_features}"
+                for c in characters
+            ]
+        )
+        shots_json = _json.dumps([s.model_dump() for s in shot_descriptions], ensure_ascii=False, indent=2)
+
+        critic_system = (
+            "You are a senior anime animation director auditing decomposed shot keyframes (ff_desc, lf_desc, motion_desc, ff_vis_char_idxs, lf_vis_char_idxs) before image generation.\n"
+            "Check EVERY shot against the canonical CHARACTERS list:\n"
+            "1. Wardrobe, hair, anatomy & prop consistency: ff_desc and lf_desc MUST match each character's canonical static_features and dynamic_features (no drifted outfit colors, no unscripted backpacks indoors, human vs animal form accurate).\n"
+            "2. NO duplicate character aliases: if CHARACTERS has multiple alias entries for the same character, keep ONLY the primary named idx actually shown in ff_vis_char_idxs/lf_vis_char_idxs and remove any duplicate phantom second person from ff_desc/lf_desc/motion_desc.\n"
+            "3. NO comic artifacts or dropped character names left behind in ff_desc/lf_desc/motion_desc/variation_reason: remove split panels, multiple overlapping poses, blank white/light void backgrounds, radial tension ink lines, sparkle marks, and restore any broken possessive `'s` or missing character name.\n"
+            "4. When repairing, keep idx, is_last, cam_idx, visual_desc, audio_desc, transition_in, continuity_from_prev, target_duration_sec aligned with input shots (and keep character names intact).\n"
+            "IMPORTANT: Return ONLY a single ```json ... ``` fenced code block matching the schema.\n"
+            "If ALL shots are clean, set needs_repair=false, issues=[], and repaired_shots=null.\n"
+            "{format_instructions}"
+        )
+        critic_human = "=== CHARACTERS ===\n{characters_str}\n\n=== SHOT_DESCRIPTIONS ===\n{shots_json}"
+        messages = [
+            ("system", critic_system.format(format_instructions=parser.get_format_instructions())),
+            ("human", critic_human.format(characters_str=characters_str, shots_json=shots_json)),
+        ]
+        try:
+            chain = self.chat_model | parser
+            response: ShotDescriptionAuditResult = await asyncio.wait_for(
+                chain.ainvoke(messages),
+                timeout=retry_timeout,
+            )
+            if response.needs_repair and response.repaired_shots and len(response.repaired_shots) == len(shot_descriptions):
+                print(f"[shot_description_llm_repaired] Fixed {len(response.issues)} issue(s): {response.issues}")
+                logging.info("ShotDescription LLM critic repaired %d issue(s): %s", len(response.issues), response.issues)
+                return response.repaired_shots
+            print("[shot_description_llm_clean] needs_repair=False")
+        except Exception as exc:
+            print(f"[shot_description_llm_fallback] {exc}")
+            logging.warning("ShotDescription self-review failed (%s); keeping original decomposed shots.", exc)
+        return shot_descriptions
 
 
 

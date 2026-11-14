@@ -43,3 +43,11 @@ explicit = true
 dev = [
     "pytest>=8",
 ]
+# Optional: image/text embedders (quality.embeddings / quality.text_embeddings).
+# Imported lazily; if absent, those features auto-disable. Models downloaded on
+# first use: facebook/dinov2-small (Apache-2.0), intfloat/multilingual-e5-small (MIT).
+embeddings = [
+    "torch",
+    "transformers",
+    "numpy",
+]

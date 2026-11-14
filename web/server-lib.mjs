@@ -4,8 +4,8 @@ import path from 'node:path';
 const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif']);
 const VIDEO_EXTENSIONS = new Set(['.mp4', '.webm', '.mov']);
 const TEXT_EXTENSIONS = new Set(['.txt', '.md', '.json', '.srt', '.ass']);
-const MAX_ARTIFACTS_RETURNED = 500;
-const MAX_SCANNED_ENTRIES = 8000;
+const MAX_ARTIFACTS_RETURNED = 5000;
+const MAX_SCANNED_ENTRIES = 20000;
 const SKIPPED_DIRECTORIES = new Set(['node_modules', '__pycache__', '.git']);
 
 const PRIORITY_DOC_NAMES = new Set([
@@ -191,9 +191,7 @@ function artifactPriorityTier(relativePath, name, kind) {
   }
   if (kind === 'video' && lowerName.startsWith('final_video')) return 0;
   if ((lowerName.endsWith('.srt') || lowerName.endsWith('.ass')) && lowerName.startsWith('final_video')) return 0;
-  if (PRIORITY_DOC_NAMES.has(lowerName)) return 0;
-  if (lowerPath.startsWith('/uploads/')) return 0;
-  if (lowerPath.includes('/character_portraits/')) return 1;
+  if (lowerPath.includes('/character_portraits/')) return 0;
   if (
     lowerName === 'first_frame.png'
     || lowerName === 'last_frame.png'
@@ -201,9 +199,12 @@ function artifactPriorityTier(relativePath, name, kind) {
     || lowerName.startsWith('transition_video_')
     || lowerName.startsWith('new_camera_')
   ) {
-    return 1;
+    return 0;
   }
-  return 2;
+  if (kind === 'image' || kind === 'video') return 0;
+  if (PRIORITY_DOC_NAMES.has(lowerName)) return 0;
+  if (lowerPath.startsWith('/uploads/')) return 0;
+  return 1;
 }
 
 export async function listSessionArtifacts(repoRoot, sessionId) {

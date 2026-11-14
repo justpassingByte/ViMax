@@ -27,12 +27,16 @@ from agent_runtime.config import (
     audio_model,
     audio_model_provider,
     audio_voice,
+    quality_generic_linter,
+    quality_max_reference_images,
+    quality_ref_policy,
     subtitles_burn_in,
     subtitles_enabled,
     subtitles_font,
     subtitles_font_size,
     subtitles_language,
 )
+from utils.series_bible import load_configured_series
 from utils.audio import (
     build_subtitle_cues,
     burn_subtitles_into_video,
@@ -120,18 +124,12 @@ def shot_requires_last_frame(shot_descriptions: List[ShotDescription], shot: Sho
     if is_transformation:
         return True
 
+    # 3. Small variation shots (subtle dialogue, breathing, gentle holds) strictly use single-frame conditioning
+    if getattr(shot, "variation_type", "small") == "small":
+        return False
+
     if getattr(shot, "variation_type", "small") in {"medium", "large"}:
         return True
-    if bool(getattr(shot, "continuity_from_prev", False)):
-        return True
-    target_dur = getattr(shot, "target_duration_sec", None)
-    if isinstance(target_dur, (int, float)) and not isinstance(target_dur, bool) and float(target_dur) <= 5.5:
-        return True
-    for i, candidate in enumerate(shot_descriptions):
-        if candidate.idx == shot.idx:
-            if i + 1 < len(shot_descriptions) and bool(getattr(shot_descriptions[i + 1], "continuity_from_prev", False)):
-                return True
-            break
     return False
 
 
@@ -175,6 +173,53 @@ def _resolve_workspace_root(working_dir: str | Path) -> Path:
         if (candidate / "configs" / "agent.local.yaml").is_file():
             return candidate
     return base
+
+
+def _scene_idx_from_working_dir(working_dir: str | Path) -> Optional[int]:
+    m = re.search(r"scene_(\d+)", str(working_dir))
+    return int(m.group(1)) if m else None
+
+
+def _character_names_in_prompt(prompt: str, vis_chars: Optional[List[Any]] = None) -> List[str]:
+    """Distinct character identifiers referenced in a prompt (<Tag> + roster idents)."""
+    names: List[str] = []
+    for raw in re.findall(r"<([^>]+)>", prompt or ""):
+        if raw.strip() and raw.strip() not in names:
+            names.append(raw.strip())
+    for c in vis_chars or []:
+        ident = c.get("identifier_in_scene", "") if isinstance(c, dict) else getattr(c, "identifier_in_scene", "")
+        if ident and ident not in names:
+            names.append(ident)
+    return names
+
+
+def _apply_series_enrichment(prompt: str, working_dir: str | Path, vis_chars: Optional[List[Any]] = None) -> str:
+    """Append series style palette + per-present-character canon notes to a keyframe prompt.
+
+    Generic replacement for the old hardcoded ``enforce_*`` chain. No-op when the
+    generic linter is off or no series bible is configured.
+    """
+    workspace_root = _resolve_workspace_root(working_dir)
+    if not quality_generic_linter(workspace_root):
+        return prompt
+    bible = load_configured_series(workspace_root)
+    if not bible.available:
+        return prompt
+    scene_idx = _scene_idx_from_working_dir(working_dir)
+    additions: List[str] = []
+    seen_notes: set[str] = set()
+    for name in _character_names_in_prompt(prompt, vis_chars):
+        note = bible.character_notes(name, scene_idx)
+        if note and note not in seen_notes:
+            seen_notes.add(note)
+            additions.append(f"[CHARACTER CANON — {name}]: {note}")
+    style = bible.style_prompt()
+    out = prompt.rstrip()
+    if additions:
+        out = out + "\n" + "\n".join(additions)
+    if style and style not in out:
+        out = out + "\n" + style
+    return out
 
 
 def _file_sha256(path: str | Path) -> str:
@@ -274,8 +319,20 @@ def _load_character_seed_refs(working_dir: str | Path) -> Dict[str, List[str]]:
     return result
 
 
-def _resolve_character_acoustic_profile(speaker: str, characters_data: List[Any]) -> Dict[str, str]:
-    """Generically resolve a character's acoustic profile, age group, vocal timbre, and negative constraints."""
+def _resolve_character_acoustic_profile(speaker: str, characters_data: List[Any], context_desc: str = "", voice_mode: str = "") -> Dict[str, str]:
+    """Generically resolve a character's acoustic profile, age group, vocal timbre, and negative constraints.
+
+    ``voice_mode`` (quality.voice_mode): ``native`` keeps the legacy per-shot
+    context variation; ``native_fixed``/``native_with_reference`` return the same
+    voice description for a character across every shot (no drift). Empty -> read config.
+    """
+    if not voice_mode:
+        try:
+            from agent_runtime.config import quality_voice_mode
+            voice_mode = quality_voice_mode(".")
+        except Exception:
+            voice_mode = "native_fixed"
+    fixed = voice_mode != "native"
     spk_raw = (speaker or "").strip()
     spk_clean = re.sub(r"\s*\([^)]*\)", "", spk_raw).strip()
     if not spk_clean:
@@ -320,11 +377,22 @@ def _resolve_character_acoustic_profile(speaker: str, characters_data: List[Any]
     if char_match:
         desc = f"{char_match[1]} {char_match[2]}".lower()
 
+    # Prefer a series-bible voice description when one is configured (series-agnostic).
+    series_voice = ""
+    try:
+        from utils.series_bible import load_configured_series as _lcs
+        series_voice = _lcs(".").voice_description(spk_clean)
+    except Exception:
+        series_voice = ""
+    if series_voice:
+        return {"clean_speaker": spk_clean, "profile": series_voice, "negatives": "Keep the voice consistent with the character's established profile."}
+
     is_narrator = any(w in spk_clean.lower() or w in desc for w in ["narrator", "người dẫn chuyện", "narration"])
     is_woman = any(w in spk_clean.lower() or w in desc for w in ["woman", "mother", "female", "girl", "mẹ", "bà", "cô"])
-    is_child = (not is_woman) and (any(w in desc for w in ["elementary", "child", "small young", "6-7", "kid"]) or (bool(re.search(r"\bhojin\b", spk_clean.lower())) and not is_woman))
-    is_teen = (not is_woman) and (not is_child) and (any(w in desc for w in ["teen", "high school", "16", "17", "young boy"]) or "jiwoo" in spk_clean.lower())
-    is_man = (not is_woman) and (not is_child) and (not is_teen) and (any(w in desc for w in ["man", "male", "athletic build", "trench coat"]) or "kayden" in spk_clean.lower())
+    is_child = (not is_woman) and any(w in desc for w in ["elementary", "child", "small young", "6-7", "kid"])
+    is_teen = (not is_woman) and (not is_child) and any(w in desc for w in ["teen", "high school", "16", "17", "young boy"])
+    is_cat = any(w in spk_clean.lower() or w in desc for w in ["cat", "tabby", "mèo"])
+    is_man = (not is_woman) and (not is_child) and (not is_teen) and (not is_cat) and any(w in desc for w in ["man", "male", "athletic build", "trench coat"])
 
     if is_narrator:
         profile = "Authoritative resonant Japanese anime narrator baritone. Calm, cinematic, neutral."
@@ -338,9 +406,17 @@ def _resolve_character_acoustic_profile(speaker: str, characters_data: List[Any]
     elif is_teen:
         profile = "16-year-old teenage boy (high school male), youthful, clear, earnest anime boy voice. Emotional and expressive."
         neg = "Strictly NOT female voice, NOT baby/toddler voice, NOT old man voice, NOT robot."
-    elif is_man or "kayden" in spk_clean.lower():
-        profile = "Powerful awakened adult male in his late 20s, deep resonant authoritative Japanese anime male baritone. Confident, charismatic, proud."
-        neg = "Strictly NOT female voice, NOT high-pitched baby/child voice, NOT generic cartoon meow."
+    elif is_cat:
+        profile = "A comically deep, gritty, grumpy masculine adult baritone voice speaking out from the fat chubby orange cat. Arrogant, deadpan, comically serious."
+        neg = "Strictly NOT female voice, NOT cute kitten meow, NOT high-pitched baby voice, NOT cartoon squeak."
+    elif is_man:
+        audio_ctx = f"{context_desc} {spk_raw}".lower()
+        if (not fixed) and any(w in audio_ctx for w in ["groan", "grunt", "deep bass", "pained", "guttural"]):
+            profile = "Extremely deep resonant bass adult male (gravelly low-pitched guttural groan of intense physical battle pain near 80-100Hz). Heavy masculine chest resonance."
+            neg = "Strictly NOT female voice, NOT high-pitched airy breath, NOT feminine sigh or gasp, NOT child voice, NOT soft whisper."
+        else:
+            profile = "Powerful awakened adult male in his late 20s, deep resonant authoritative Japanese anime male baritone. Confident, charismatic, proud."
+            neg = "Strictly NOT female voice, NOT high-pitched baby/child voice, NOT generic cartoon meow."
     else:
         profile = "Clear expressive Japanese anime voice actor matching scene context."
         neg = "Strictly clean studio recording, no robotic or synthetic artifacts."
@@ -352,17 +428,31 @@ def _resolve_character_acoustic_profile(speaker: str, characters_data: List[Any]
     }
 
 
+def _clean_sfx_onomatopoeia(text: str) -> str:
+    """Clean comic onomatopoeia letters and strip mouth sounds from SFX text."""
+    if not text:
+        return ""
+    # Strip quoted comic words like 'SPPPPPT!', 'SSSSSHHHHHH', "BZZZT!"
+    c = re.sub(r"['\"][A-Za-z0-9!?-]{2,}['\"]", "", text)
+    # Strip uppercase sound words longer than 2 chars like SSSSSHHHHHHH...
+    c = re.sub(r"\b[A-Z]{3,}[.!?]*", "", c)
+    c = re.sub(r"[:\s,-]+$", "", c).strip()
+    return c
+
+
 def _format_video_prompt_audio(
     clean_audio_desc: str,
     characters_data: List[Any],
     timing_note: str = "",
+    is_back_view: bool = False,
+    is_no_face: bool = False,
 ) -> str:
     """Format dialogue into structured, hallucination-proof audio & vocal profile specifications."""
     if not clean_audio_desc or not clean_audio_desc.strip():
         return ""
 
     sfx_match = re.findall(r"\[Sound\s*Effect\]\s*([^\[\n]+)", clean_audio_desc, re.IGNORECASE)
-    sfx_text = ", ".join(s.strip() for s in sfx_match if s.strip())
+    sfx_text = ", ".join(_clean_sfx_onomatopoeia(s.strip()) for s in sfx_match if _clean_sfx_onomatopoeia(s.strip()))
 
     narrator_match = re.search(
         r"\[(?:Speaker|Off-screen.*?Voiceover)\]\s*(?:Người Dẫn Chuyện|Narrator)\s*(?:\([^)]*\))?\s*:\s*(?:'|\")?([^'\"]+)(?:'|\")?",
@@ -431,12 +521,23 @@ def _format_video_prompt_audio(
         raw_em = em[-1].strip() if em else ""
         emotion = "" if re.search(r"\b(cat|human|boy|girl|man|woman)\b", raw_em.lower()) else raw_em
         line = spoken_match.group(spoken_match.lastindex).strip() if spoken_match.lastindex else ""
-        prof = _resolve_character_acoustic_profile(speaker_block, characters_data)
+        prof = _resolve_character_acoustic_profile(speaker_block, characters_data, context_desc=clean_audio_desc)
+        if is_no_face:
+            delivery_mode = "Pure off-screen voiceover. Camera remains strictly locked on the subject/prop/environment in Image 0. Strictly NO character face in frame, NO human head, NO mouth visible."
+        elif is_back_view:
+            delivery_mode = "Physical guttural vocal groan from behind (rear framing; character remains completely facing away with head bowed down toward the ground; camera holds strictly static behind the character; strictly DO NOT turn the character around, DO NOT reveal face or mouth)."
+        else:
+            delivery_mode = "Spoken dialogue (expressive, natural dialogue pacing, lips move in sync)."
         out = [
             "[Audio & Spoken Japanese Dialogue Track ONLY - Studio Anime Voice Acting, No On-screen Subtitles]",
-            f"- Active Speaker: {prof['clean_speaker']}" + (f" ({emotion})" if emotion else ""),
+            f"- Active Speaker: {prof['clean_speaker']}",
             f"- Vocal Acoustic Profile: {prof['profile']}",
-            f"- Delivery Mode: Spoken dialogue (expressive, natural dialogue pacing, lips move in sync).",
+        ]
+        # Emotion travels on its own line so the fixed voice description never drifts (phase 07).
+        if emotion:
+            out.append(f"- Delivery emotion: {emotion}")
+        out += [
+            f"- Delivery Mode: {delivery_mode}",
             f"- Acoustic Rules: {prof['negatives']} Only {prof['clean_speaker']} speaks. All other characters in the shot remain completely silent.",
             f"- Spoken Line: '{line}'",
         ]
@@ -447,14 +548,58 @@ def _format_video_prompt_audio(
         return "\n".join(out)
 
     if sfx_text or clean_audio_desc:
+        char_vocal_rule = ""
+        for c in (characters_data or []):
+            ident = c.get("identifier_in_scene", "") if isinstance(c, dict) else getattr(c, "identifier_in_scene", "")
+            ident_clean = re.sub(r"\s*\([^)]*\)", "", ident).strip()
+            if ident_clean and re.search(rf"\b{re.escape(ident_clean)}\b", clean_audio_desc, re.IGNORECASE):
+                prof = _resolve_character_acoustic_profile(ident_clean, characters_data, context_desc=clean_audio_desc)
+                char_vocal_rule = (
+                    f"- Character Vocal Identity: {prof['clean_speaker']}\n"
+                    f"- Vocal Acoustic Profile: {prof['profile']}\n"
+                    f"- Acoustic Rules: {prof['negatives']} Any coughs, groans, labored breathing, or vocal sounds from {prof['clean_speaker']} MUST strictly match this deep adult male seiyuu identity. Strictly NO female voice, NO high-pitched sounds."
+                )
+                break
+
+        cleaned_ambient = _clean_sfx_onomatopoeia(clean_audio_desc) or "Atmospheric cinematic sound design"
         out = [
             "[Audio & Sound Effects Track ONLY - No Spoken Dialogue, No On-screen Subtitles]",
-            f"- Sound Effects & Ambient: {clean_audio_desc}",
-            "- Acoustic Rules: Pure Foley and environmental sound effects. No random speech, no human vocal chatter.",
+            f"- Sound Effects & Ambient: {cleaned_ambient}",
+            char_vocal_rule if char_vocal_rule else "- Acoustic Rules: Pure Foley and environmental sound effects. Strictly NO human mouth noises, NO vocal hissing, NO random speech.",
         ]
         return "\n".join(out)
 
     return ""
+
+
+def _portrait_pairs_for_characters(visible_characters, character_portraits_registry):
+    """One best-angle portrait (path, ident, desc) per present character."""
+    out = []
+    seen = set()
+    if character_portraits_registry and visible_characters:
+        for char in visible_characters:
+            if not getattr(char, "is_visible", True):
+                continue
+            ident = getattr(char, "identifier_in_scene", "")
+            reg = character_portraits_registry.get(ident) or {}
+            chosen = (
+                reg.get("front")
+                or reg.get("front_three_quarter")
+                or reg.get("side")
+                or next(iter(reg.values()), None)
+            )
+            if chosen and isinstance(chosen, dict) and os.path.exists(chosen.get("path", "")):
+                p_path = chosen["path"]
+                if p_path not in seen:
+                    desc = (
+                        f"Canonical character portrait reference for <{ident}>: maintain exact facial features, "
+                        f"hairstyle, hair color, eye shape, and clothing colors directly matching this portrait. "
+                        f"(NOTE: Do NOT copy the studio background of this portrait; adopt the scene lighting anchor "
+                        f"for environment and color grading)."
+                    )
+                    out.append((p_path, ident, desc))
+                    seen.add(p_path)
+    return out
 
 
 def _ensure_character_portraits_and_spatial_anchors(
@@ -462,39 +607,93 @@ def _ensure_character_portraits_and_spatial_anchors(
     visible_characters: List[Any],
     character_portraits_registry: Optional[Dict[str, Dict[str, Dict[str, str]]]] = None,
     scene_anchor_pair: Optional[Tuple[str, str]] = None,
-    limit: int = 8,
+    limit: int = 4,
+    *,
+    sheet_dir: Optional[str] = None,
+    sheet_tag: str = "",
 ) -> List[Tuple[str, str]]:
-    """Guarantees that canonical portraits for all visible characters and the scene establishing anchor are present."""
-    pairs = list(pairs or [])
-    existing_paths = {p[0] for p in pairs}
+    """Guarantees that canonical portraits for all visible characters appear FIRST (Image 0, Image 1...)
+    so diffusion models lock onto authentic facial likeness and wardrobe before secondary anchors.
 
-    if character_portraits_registry and visible_characters:
-        for char in visible_characters:
-            if not getattr(char, "is_visible", True):
-                continue
-            ident = getattr(char, "identifier_in_scene", "")
-            reg = character_portraits_registry.get(ident) or {}
-            char_portrait_paths = {v["path"] for v in reg.values() if isinstance(v, dict) and "path" in v}
-            if not char_portrait_paths.intersection(existing_paths):
-                chosen = (
-                    reg.get("front")
-                    or reg.get("front_three_quarter")
-                    or reg.get("side")
-                    or next(iter(reg.values()), None)
-                )
-                if chosen and isinstance(chosen, dict) and os.path.exists(chosen.get("path", "")):
-                    p_path = chosen["path"]
-                    p_desc = f"Canonical character portrait reference for <{ident}>: maintain exact facial features, hairstyle, hair color, eye shape, and costume."
-                    pairs.insert(0, (p_path, p_desc))
-                    existing_paths.add(p_path)
+    When there are more present characters than ``limit - 1`` reference slots and a
+    ``sheet_dir`` is given, their portraits are tiled into a single reference sheet so
+    no character is dropped (phase 03, quality.ref_policy != legacy).
+    """
+    portraits = _portrait_pairs_for_characters(visible_characters, character_portraits_registry)
+    portrait_paths = {p for p, _ident, _d in portraits}
+
+    portrait_pairs: List[Tuple[str, str]] = []
+    # If characters outnumber the slot budget (keep >=1 slot for a scene anchor), tile a sheet.
+    if sheet_dir and len(portraits) > max(1, limit - 1):
+        from utils import reference_sheet
+        entries = [(p, ident) for p, ident, _d in portraits]
+        out_path = os.path.join(sheet_dir, f"reference_sheet{('_' + sheet_tag) if sheet_tag else ''}.png")
+        try:
+            saved = reference_sheet.compose_to_file(entries, out_path)
+        except Exception:
+            saved = None
+        if saved:
+            portrait_pairs.append((saved, reference_sheet.order_label(entries)))
+        else:
+            portrait_pairs.extend((p, d) for p, _ident, d in portraits)
+    else:
+        portrait_pairs.extend((p, d) for p, _ident, d in portraits)
+
+    other_pairs = [p for p in (pairs or []) if p[0] not in portrait_paths]
 
     if scene_anchor_pair and scene_anchor_pair[0] and os.path.exists(scene_anchor_pair[0]):
-        if scene_anchor_pair[0] not in existing_paths:
-            insert_idx = min(len(visible_characters or []), len(pairs))
-            pairs.insert(insert_idx, scene_anchor_pair)
-            existing_paths.add(scene_anchor_pair[0])
+        if scene_anchor_pair[0] not in portrait_paths and scene_anchor_pair[0] not in {p[0] for p in other_pairs}:
+            other_pairs.append(scene_anchor_pair)
 
-    return _dedupe_image_text_pairs(pairs, limit=limit)
+    # Ensure manga panel anchors do not cause beard/cross-hatch or chibi hallucination
+    cleaned_other = []
+    for p_path, p_text in other_pairs:
+        if "panel_anchors" in p_path:
+            p_text = (
+                f"{p_text} (Layout/composition anchor only. Do NOT copy simplified cartoon/chibi expressions, "
+                f"dot eyes, screentone, or black cross-hatching. Character facial likeness and wardrobe must "
+                f"strictly match the turnaround portrait Image 0)."
+            )
+        cleaned_other.append((p_path, p_text))
+
+    all_pairs = portrait_pairs + cleaned_other
+    return _dedupe_image_text_pairs(all_pairs, limit=limit)
+
+
+def _classify_ref_role(path: str, text: str, portrait_paths: set) -> str:
+    p = (path or "").lower()
+    t = (text or "").lower()
+    if path in portrait_paths or "reference_sheet" in p or "portrait" in t or "turnaround" in t:
+        return "portrait"
+    if "panel_anchors" in p or "panel" in t:
+        return "panel"
+    if "anchor" in t or "video_end" in p or "establishing" in t:
+        return "scene_anchor"
+    if "continuity" in t or "previous shot" in t:
+        return "continuity"
+    return "other"
+
+
+def _write_refs_used(working_dir, shot_idx, frame_type, pairs, visible_characters, character_portraits_registry):
+    """Record the reference images actually sent to the image model (debug aid, always on)."""
+    try:
+        portraits = _portrait_pairs_for_characters(visible_characters, character_portraits_registry)
+        portrait_paths = {p for p, _i, _d in portraits}
+        n_present = sum(1 for c in (visible_characters or []) if getattr(c, "is_visible", True))
+        records = [
+            {"path": p, "text": t, "role": _classify_ref_role(p, t, portrait_paths)}
+            for p, t in pairs
+        ]
+        n_portrait = sum(1 for r in records if r["role"] == "portrait")
+        out_dir = os.path.join(working_dir, "shots", str(shot_idx))
+        os.makedirs(out_dir, exist_ok=True)
+        with open(os.path.join(out_dir, f"{frame_type}_refs_used.json"), "w", encoding="utf-8") as f:
+            json.dump(
+                {"n_present": n_present, "n_portrait_refs": n_portrait, "n_refs": len(records), "refs": records},
+                f, ensure_ascii=False, indent=2,
+            )
+    except Exception:
+        pass
 
 
 class Script2VideoPipeline:
@@ -709,8 +908,14 @@ class Script2VideoPipeline:
             user_requirement=user_requirement,
             quiet=quiet,
         )
-        from agents.anime_director_guard import AnimeDirectorGuard
-        storyboard = AnimeDirectorGuard.lint_and_auto_correct_storyboard(storyboard, characters=characters)
+        if quality_generic_linter(_resolve_workspace_root(self.working_dir)):
+            from agents.shot_linter import lint_and_auto_correct_storyboard
+            storyboard = lint_and_auto_correct_storyboard(storyboard, characters=characters)
+        try:
+            with open(os.path.join(self.working_dir, "storyboard.json"), "w", encoding="utf-8") as f:
+                json.dump([shot.model_dump() for shot in storyboard], f, ensure_ascii=False, indent=4)
+        except OSError:
+            pass
         _emit_render_progress(progress, "storyboard_ready", "Storyboard ready", {"shot_count": len(storyboard)})
 
         # decompose visual descriptions of shots
@@ -720,7 +925,16 @@ class Script2VideoPipeline:
             characters=characters,
             quiet=quiet,
         )
-        shot_descriptions = [AnimeDirectorGuard.lint_and_auto_correct_shot_description(sd, characters=characters) for sd in shot_descriptions]
+        if quality_generic_linter(_resolve_workspace_root(self.working_dir)):
+            from agents.shot_linter import lint_and_auto_correct_shot_description
+            shot_descriptions = [lint_and_auto_correct_shot_description(sd, characters=characters) for sd in shot_descriptions]
+        for sd in shot_descriptions:
+            try:
+                sd_path = os.path.join(self.working_dir, "shots", f"{sd.idx}", "shot_description.json")
+                with open(sd_path, "w", encoding="utf-8") as f:
+                    json.dump(sd.model_dump(), f, ensure_ascii=False, indent=4)
+            except OSError:
+                pass
         _emit_render_progress(progress, "shot_descriptions_ready", "Shot descriptions ready", {"shot_count": len(shot_descriptions)})
 
         # construct camera tree
@@ -752,6 +966,7 @@ class Script2VideoPipeline:
                     priority_shot_idxs=priority_shot_idxs,
                     progress=progress,
                     shot_panel_refs=effective_panel_refs,
+                    allow_transition_video=(stop_after == "full"),
                 )
                 if effective_panel_refs
                 else self.generate_frames_for_single_camera(
@@ -761,13 +976,15 @@ class Script2VideoPipeline:
                     character_portraits_registry=character_portraits_registry,
                     priority_shot_idxs=priority_shot_idxs,
                     progress=progress,
+                    allow_transition_video=(stop_after == "full"),
                 )
             )
             for camera in camera_tree
         ]
 
         if stop_after == "frames":
-            await asyncio.gather(*tasks)
+            if tasks:
+                await asyncio.gather(*tasks)
             frame_paths: List[str] = []
             for sd in shot_descriptions:
                 ff = os.path.join(self.working_dir, "shots", f"{sd.idx}", "first_frame.png")
@@ -788,7 +1005,8 @@ class Script2VideoPipeline:
             for shot_description in shot_descriptions
         ]
         tasks.extend(video_tasks)
-        await asyncio.gather(*tasks)
+        if tasks:
+            await asyncio.gather(*tasks)
 
         final_video_path = os.path.join(self.working_dir, "final_video.mp4")
         workspace_root = _resolve_workspace_root(self.working_dir)
@@ -1153,6 +1371,7 @@ class Script2VideoPipeline:
         priority_shot_idxs: List[int],
         progress: Callable[[str, str, Dict[str, Any] | None], None] | None = None,
         shot_panel_refs: Optional[Dict[int, List[Tuple[str, str]]]] = None,
+        allow_transition_video: bool = True,
     ):
         if not camera.active_shot_idxs:
             return
@@ -1193,7 +1412,7 @@ class Script2VideoPipeline:
             new_camera_image_path = None
             if continuity_pair is not None:
                 available_image_path_and_text_pairs.append(continuity_pair)
-            elif first_panel_pairs and camera.parent_shot_idx is not None:
+            elif (first_panel_pairs or not allow_transition_video) and camera.parent_shot_idx is not None:
                 parent_shot_idx = camera.parent_shot_idx
                 parent_ev = self.frame_events.get(parent_shot_idx, {}).get("first_frame")
                 if parent_ev is not None:
@@ -1259,7 +1478,7 @@ class Script2VideoPipeline:
                     )
                 )
 
-            if continuity_pair is not None or first_panel_pairs or camera.parent_shot_idx is None or camera.missing_info is not None:
+            if continuity_pair is not None or first_panel_pairs or camera.parent_shot_idx is None or not allow_transition_video or camera.missing_info is not None:
                 ff_selector_output_path = os.path.join(self.working_dir, "shots", f"{first_shot_idx}", "first_frame_selector_output.json")
                 if os.path.exists(ff_selector_output_path):
                     with open(ff_selector_output_path, 'r', encoding='utf-8') as f:
@@ -1269,7 +1488,12 @@ class Script2VideoPipeline:
                 else:
                     print(f"🔍 Selecting reference images and generating prompt for first_frame of shot {first_shot_idx}...")
                     _emit_render_progress(progress, "frame_prompt_start", f"Selecting references for first frame of shot {first_shot_idx}", {"camera_idx": camera.idx, "shot_idx": first_shot_idx, "frame_type": "first_frame"})
+                    _ws_ref = _resolve_workspace_root(self.working_dir)
+                    _ref_policy = quality_ref_policy(_ws_ref)
+                    _max_ref = quality_max_reference_images(_ws_ref)
                     available_image_path_and_text_pairs = _dedupe_image_text_pairs(available_image_path_and_text_pairs)
+                    _cand_cap = 4 if _ref_policy == "legacy" else max(4, _max_ref)
+                    available_image_path_and_text_pairs = available_image_path_and_text_pairs[:_cand_cap]  # cap refs to avoid muse2api payload hang
                     ff_selector_output = await self.reference_image_selector.select_reference_images_and_generate_prompt(
                         available_image_path_and_text_pairs=available_image_path_and_text_pairs,
                         frame_description=first_shot_desc.ff_desc
@@ -1289,22 +1513,60 @@ class Script2VideoPipeline:
                     if idx in char_by_idx and getattr(char_by_idx[idx], "is_visible", True)
                 ]
                 scene_anchor = None
-                scene_shot0_ff = os.path.join(self.working_dir, "shots", "0", "first_frame.png")
-                if os.path.exists(scene_shot0_ff) and first_shot_idx != 0:
-                    scene_anchor = (scene_shot0_ff, "Scene establishing environment anchor: maintain the exact same architectural location, background walls, floor/ground textures, time of day, and lighting atmosphere.")
+                transition_in_val = (getattr(first_shot_desc, "transition_in", None) or "cut").lower()
+                desc_text_lower = " ".join(
+                    filter(None, [getattr(first_shot_desc, "ff_desc", ""), getattr(first_shot_desc, "visual_desc", "")])
+                ).lower()
+                is_alley_night_context = (
+                    any(k in desc_text_lower for k in ("alley", "alleyway", "stone wall", "asphalt"))
+                    and not any(k in desc_text_lower for k in ("pet shop", "shop interior", "store lighting", "sunset", "sunlit", "warm amber"))
+                )
+                if transition_in_val != "fade_black":
+                    for prev_s in (5, 4, 3):
+                        if prev_s < first_shot_idx:
+                            cand_end = os.path.join(self.working_dir, "shots", str(prev_s), "video_end.png")
+                            cand_p = cand_end if os.path.exists(cand_end) else os.path.join(self.working_dir, "shots", str(prev_s), "first_frame.png")
+                            if os.path.exists(cand_p):
+                                if is_alley_night_context:
+                                    anchor_desc = (
+                                        f"Master scene lighting, color grading & architectural anchor from Shot {prev_s}: "
+                                        "maintain the exact same moody rainy navy night color grading and cold desaturated alley atmosphere, "
+                                        "preserving tonal separation with cool silver-white 3/4 rim/directional highlights from the brighter alley exit "
+                                        "against dark vertical stone wall textures, wet asphalt pavement, and subtle glowing cyan sparks. "
+                                        "Strictly NO warm incandescent yellow color shifts, NO daytime lighting changes."
+                                    )
+                                else:
+                                    anchor_desc = (
+                                        f"Master scene lighting, color grading & environment anchor from Shot {prev_s}: "
+                                        "maintain consistent anime palette, lighting, and location atmosphere."
+                                    )
+                                scene_anchor = (cand_p, anchor_desc)
+                                break
+                if scene_anchor is None and first_shot_idx != 0 and transition_in_val != "fade_black":
+                    scene_shot0_ff = os.path.join(self.working_dir, "shots", "0", "first_frame.png")
+                    if os.path.exists(scene_shot0_ff):
+                        scene_anchor = (scene_shot0_ff, "Scene establishing environment anchor: maintain the exact same architectural location, background walls, floor/ground textures, time of day, and lighting atmosphere.")
 
+                _ws_ref = _resolve_workspace_root(self.working_dir)
+                _ref_policy = quality_ref_policy(_ws_ref)
+                _ref_limit = 2 if _ref_policy == "legacy" else quality_max_reference_images(_ws_ref)
+                _sheet_dir = None if _ref_policy == "legacy" else os.path.join(self.working_dir, "shots", str(first_shot_idx))
                 reference_image_path_and_text_pairs = _ensure_character_portraits_and_spatial_anchors(
                     pairs=raw_pairs,
                     visible_characters=vis_chars,
                     character_portraits_registry=character_portraits_registry,
                     scene_anchor_pair=scene_anchor,
-                    limit=8,
+                    limit=_ref_limit,
+                    sheet_dir=_sheet_dir,
+                    sheet_tag="first_frame",
                 )
                 prefix_prompt = ""
                 for i, (image_path, text) in enumerate(reference_image_path_and_text_pairs):
                     prefix_prompt += f"Image {i}: {text}\n"
                 prompt = f"{prefix_prompt}\n{prompt}"
+                prompt = _apply_series_enrichment(prompt, self.working_dir, vis_chars)
                 reference_image_paths = [item[0] for item in reference_image_path_and_text_pairs]
+                _write_refs_used(self.working_dir, first_shot_idx, "first_frame", reference_image_path_and_text_pairs, vis_chars, character_portraits_registry)
                 ff_image: ImageOutput = await self.generate_and_select_best_image(
                     prompt=prompt,
                     reference_image_paths=reference_image_paths,
@@ -1440,18 +1702,8 @@ class Script2VideoPipeline:
                 flags=re.IGNORECASE | re.MULTILINE,
             ).strip()
             motion_clean = (shot_description.motion_desc or "").strip()
-            has_two_keyframes = len(frame_paths) >= 2
-            keyframe_note = (
-                "Animate seamlessly starting from Image 0 (exact opening frame) through the full movement to land precisely on Image 1 (exact final keyframe). Maintain consistent anime character proportions, battle wear, lighting, and background across the whole clip."
-                if has_two_keyframes
-                else ""
-            )
-            has_spoken_audio = bool(re.search(r"\[(?:Speaker|Thought|Inner\s*Monologue)\]", clean_audio_desc, re.IGNORECASE))
-            timing_note = (
-                "\n(Spoken Delivery Pacing: start speaking promptly near 0.3s and complete every word cleanly with natural phrasing before the shot ends.)"
-                if has_spoken_audio
-                else ""
-            )
+            from agents.shot_linter import sanitize_motion_prompt
+            motion_clean = sanitize_motion_prompt(motion_clean)
             characters_data = []
             chars_json_path = os.path.join(self.working_dir, "characters.json")
             if os.path.exists(chars_json_path):
@@ -1461,9 +1713,76 @@ class Script2VideoPipeline:
                 except Exception:
                     characters_data = []
 
-            formatted_audio = _format_video_prompt_audio(clean_audio_desc, characters_data, timing_note)
+            has_characters = bool(getattr(shot_description, "ff_vis_char_idxs", None) or getattr(shot_description, "lf_vis_char_idxs", None))
+            if not has_characters and characters_data:
+                has_characters = bool(re.search(r"<[^>]+>", shot_description.visual_desc or ""))
+
+            has_two_keyframes = len(frame_paths) >= 2
+            is_back_view = False
+            if not has_characters:
+                keyframe_note = (
+                    "Animate strictly starting from Image 0 (exact opening keyframe). Pure scenic, architectural, and environmental scene: "
+                    "preserve the exact background composition, sky, houses, trees, lighting, and objects from Image 0 throughout the entire clip. "
+                    "Strictly DO NOT add any characters, DO NOT introduce any people or humans into the scene."
+                )
+                facial_rule = ""
+                aesthetic_rule = (
+                    "[STYLIZED ANIME AESTHETIC]: Clean modern 2D Japanese anime environmental animation. "
+                    "Focus on atmospheric night lighting, gentle wind, sky effects, and smooth cinematic pacing."
+                )
+            else:
+                keyframe_note = (
+                    "Animate seamlessly starting from Image 0 (exact opening frame) through the full movement to land precisely on Image 1 (exact final keyframe). Maintain consistent anime character proportions, wardrobe, battle wounds, bloodstains, lighting, and background across the whole clip."
+                    if has_two_keyframes
+                    else "Animate naturally starting directly from Image 0 (exact opening keyframe). Maintain strict visual consistency with Image 0: preserve the exact character appearance, outfit, hairstyle, battle wounds, bloodstains, and lighting throughout the entire clip without altering clothing, healing injuries, or hallucinating unintended inner garments."
+                )
+                desc_text = f"{getattr(shot_description, 'visual_desc', '')} {getattr(shot_description, 'motion_desc', '')}".lower()
+                has_injuries = bool(re.search(
+                    r"\b(wound|wounded|injury|injured|bleed|bleeding|blood|bloodied|bruise|bruised|scraped|scratched|cut|cuts|slashed|battle wear|battle damage|torn)\b",
+                    desc_text,
+                ))
+                is_back_view = bool(re.search(
+                    r"\b(seen from behind|from behind|back view|rear view|behind|head bowed|back turned|facing away|facing wall|over-the-shoulder|back of|looking down|obscured face|face obscured|insert shot|tightly focused on.*?hand|focused on.*?hand|grounded hand|close-up on.*?hand|hand pressed|knuckles|foot|feet|boots)\b",
+                    desc_text,
+                ))
+
+                injury_persistence_rule = (
+                    "[BATTLE INJURY & DAMAGE PERSISTENCE]: Strictly preserve all visible battle wounds, cuts, scrapes, bruises, "
+                    "blood streaks, and torn battle-damaged clothing from Image 0 consistently across all intermediate frames. "
+                    "DO NOT magically heal, clean, erase, or smooth over any wounds or bloodstains."
+                    if has_injuries
+                    else ""
+                )
+
+                if is_back_view:
+                    facial_rule = (
+                        "[STRICT FRAMING & POSE LOCK]: Locked static perspective directly matching Image 0. "
+                        "The character remains completely motionless facing away with head bowed down toward the ground throughout the shot. "
+                        "Strictly preserve the exact rear framing, body posture, hands, and attire from Image 0 throughout the entire clip."
+                    )
+                else:
+                    facial_rule = (
+                        "[MANDATORY CHARACTER CONSISTENCY]: Preserve exact character proportions, facial features, "
+                        "hair, battle injuries, and clothing strictly matching Image 0 reference across all animated frames."
+                    )
+                _series_style = ""
+                if quality_generic_linter(_resolve_workspace_root(self.working_dir)):
+                    _series_style = load_configured_series(_resolve_workspace_root(self.working_dir)).style_prompt()
+                aesthetic_rule = _series_style or (
+                    "[STYLIZED 2D ANIME AESTHETIC]: Clean 2D anime / manhwa style with crisp digital ink outlines and smooth flat "
+                    "cel shading. Strictly NO 3D rendering, NO photorealism, NO painterly brush noise. Persistent stylized 2D battle "
+                    "damage. Directly generate the visual animation starting seamlessly from Image 0."
+                )
+
+            has_spoken_audio = bool(re.search(r"\[(?:Speaker|Thought|Inner\s*Monologue)\]", clean_audio_desc, re.IGNORECASE))
+            timing_note = (
+                "\n(Spoken Delivery Pacing: start speaking promptly near 0.3s and complete every word cleanly near 70% of the clip duration, followed by at least 1.5 seconds of lingering ambient silence, breathing, and reaction before the shot ends.)"
+                if has_spoken_audio
+                else ""
+            )
+            formatted_audio = _format_video_prompt_audio(clean_audio_desc, characters_data, timing_note, is_back_view=is_back_view)
             if suppress_subs:
-                visual_body = "\n".join(part for part in (keyframe_note, motion_clean) if part).strip()
+                visual_body = "\n".join(part for part in (keyframe_note, motion_clean, injury_persistence_rule, facial_rule, aesthetic_rule) if part).strip()
                 sections = []
                 if visual_body:
                     sections.append(
@@ -1473,7 +1792,7 @@ class Script2VideoPipeline:
                     sections.append(formatted_audio)
                 video_prompt = "\n\n".join(sections).strip()
             else:
-                visual_body = "\n".join(part for part in (keyframe_note, motion_clean) if part).strip()
+                visual_body = "\n".join(part for part in (keyframe_note, motion_clean, injury_persistence_rule, facial_rule, aesthetic_rule) if part).strip()
                 video_prompt = "\n\n".join(part for part in (visual_body, formatted_audio) if part).strip()
             gen_kwargs: Dict[str, Any] = {
                 "prompt": video_prompt,
@@ -1502,6 +1821,20 @@ class Script2VideoPipeline:
             video_output.save(video_path)
             from utils.video import conform_shot_video_duration
             conform_shot_video_duration(video_path, shot_description)
+
+            # Per-shot burn-in of cinema-grade anime Vietsub if enabled
+            if suppress_subs:
+                try:
+                    from utils.audio import burn_shot_subtitle
+                    burn_shot_subtitle(
+                        video_path=video_path,
+                        shot_description=shot_description,
+                        font=subtitles_font(workspace_root),
+                        font_size=subtitles_font_size(workspace_root),
+                    )
+                except Exception as exc:
+                    logging.warning(f"Per-shot subtitle burn-in skipped for shot {shot_description.idx}: {exc}")
+
             print(f"☑️ Generated video for shot {shot_description.idx}, saved to {video_path}.")
             _emit_render_progress(progress, "video_clip_done", f"Generated video clip for shot {shot_description.idx}", {"shot_idx": shot_description.idx, "path": video_path})
 
@@ -1519,7 +1852,7 @@ class Script2VideoPipeline:
         count = validate_image_candidate_count(self.num_image_candidates if num_candidates is None else num_candidates)
         if count == 1:
             gen_kwargs: Dict[str, Any] = {
-                "prompt": prompt,
+                "prompt": prompt + " Generate a single static image only. No video, no animation, no motion, no GIF. Output a static PNG image.",
                 "reference_image_paths": reference_image_paths,
                 "size": size,
             }
@@ -1576,7 +1909,7 @@ class Script2VideoPipeline:
                     record["reused"] = True
                 else:
                     output = await self.image_generator.generate_single_image(
-                        prompt=prompt, reference_image_paths=reference_image_paths, size=size,
+                        prompt=prompt + " Generate a single static image only. No video, no animation, no motion, no GIF. Output a static PNG image.", reference_image_paths=reference_image_paths, size=size,
                     )
                     if output is None:
                         raise RuntimeError("Image provider returned no image")
@@ -1688,7 +2021,12 @@ class Script2VideoPipeline:
             else:
                 print(f"🔍 Selecting reference images and generating prompt for {frame_type} frame of shot {shot_idx}...")
                 _emit_render_progress(progress, "frame_prompt_start", f"Selecting references for {frame_type} of shot {shot_idx}", {"shot_idx": shot_idx, "frame_type": frame_type})
+                _ws_ref2 = _resolve_workspace_root(self.working_dir)
+                _ref_policy2 = quality_ref_policy(_ws_ref2)
+                _max_ref2 = quality_max_reference_images(_ws_ref2)
                 available_image_path_and_text_pairs = _dedupe_image_text_pairs(available_image_path_and_text_pairs)
+                _cand_cap2 = 4 if _ref_policy2 == "legacy" else max(4, _max_ref2)
+                available_image_path_and_text_pairs = available_image_path_and_text_pairs[:_cand_cap2]  # cap refs to avoid muse2api payload hang
                 selector_output = await self.reference_image_selector.select_reference_images_and_generate_prompt(
                     available_image_path_and_text_pairs=available_image_path_and_text_pairs,
                     frame_description=frame_desc
@@ -1701,18 +2039,26 @@ class Script2VideoPipeline:
 
             raw_pairs = selector_output["reference_image_path_and_text_pairs"]
             prompt = selector_output["text_prompt"]
+            _ws_ref3 = _resolve_workspace_root(self.working_dir)
+            _ref_policy3 = quality_ref_policy(_ws_ref3)
+            _ref_limit3 = 2 if _ref_policy3 == "legacy" else quality_max_reference_images(_ws_ref3)
+            _sheet_dir3 = None if _ref_policy3 == "legacy" else os.path.join(self.working_dir, "shots", str(shot_idx))
             reference_image_path_and_text_pairs = _ensure_character_portraits_and_spatial_anchors(
                 pairs=raw_pairs,
                 visible_characters=visible_characters,
                 character_portraits_registry=character_portraits_registry,
                 scene_anchor_pair=first_shot_ff_path_and_text_pair,
-                limit=8,
+                limit=_ref_limit3,
+                sheet_dir=_sheet_dir3,
+                sheet_tag=frame_type,
             )
             prefix_prompt = ""
             for i, (image_path, text) in enumerate(reference_image_path_and_text_pairs):
                 prefix_prompt += f"Image {i}: {text}\n"
             prompt = f"{prefix_prompt}\n{prompt}"
+            prompt = _apply_series_enrichment(prompt, self.working_dir, visible_characters)
             reference_image_paths = [item[0] for item in reference_image_path_and_text_pairs]
+            _write_refs_used(self.working_dir, shot_idx, frame_type, reference_image_path_and_text_pairs, visible_characters, character_portraits_registry)
 
             frame_image: ImageOutput = await self.generate_and_select_best_image(
                 prompt=prompt,
@@ -1914,9 +2260,11 @@ class Script2VideoPipeline:
         characters: List[CharacterInScene],
         user_requirement: str,
         quiet: bool = False,
+        grounded: bool = False,
+        force: bool = False,
     ):
         storyboard_path = os.path.join(self.working_dir, "storyboard.json")
-        if os.path.exists(storyboard_path):
+        if os.path.exists(storyboard_path) and not force:
             with open(storyboard_path, 'r', encoding='utf-8') as f:
                 storyboard = json.load(f)
             storyboard = [ShotBriefDescription.model_validate(shot) for shot in storyboard]
@@ -1928,6 +2276,7 @@ class Script2VideoPipeline:
                 characters=characters,
                 user_requirement=user_requirement,
                 retry_timeout=240,
+                grounded=grounded,
             )
             storyboard = _normalize_model_list(storyboard, ShotBriefDescription, "storyboard")
             with open(storyboard_path, 'w', encoding='utf-8') as f:

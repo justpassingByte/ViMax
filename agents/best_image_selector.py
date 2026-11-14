@@ -45,6 +45,7 @@ The user will provide the following content:
 - Ensure the key elements described in the text are present in the selected image.
 - Avoid subjective preferences; base all analysis on objective comparisons.
 - Prioritize images without white borders, black edges, or any additional framing.
+- BATTLE DAMAGE & INJURY CONTINUITY: If the target description specifies that a character has battle injuries, bleeding lacerations, chest wounds, or torn clothing, severely penalize any candidate image that depicts clean, uninjured, smooth skin or undamaged clothing! Prioritize candidate images that accurately preserve the specified bleeding lacerations, torn clothing, and wound details.
 """
 
 human_prompt_template_select_most_consistent_image = \

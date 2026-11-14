@@ -449,6 +449,95 @@ class Script2VideoPipelineGuardTests(unittest.IsolatedAsyncioTestCase):
             self.assertIsNotNone(cont_pair)
             self.assertEqual(cont_pair[0], str(shot0_ff))
 
+    async def test_stop_after_frames_never_calls_transition_video_and_skips_alley_anchor_in_pet_shop(self):
+        import asyncio
+        from types import SimpleNamespace
+        from interfaces import Camera
+
+        with tempfile.TemporaryDirectory() as tmp:
+            work_dir = Path(tmp) / "ep1" / "script2video"
+            for i in (0, 3, 4):
+                s_dir = work_dir / "shots" / str(i)
+                s_dir.mkdir(parents=True, exist_ok=True)
+            (work_dir / "shots" / "0" / "first_frame.png").write_bytes(b"png0")
+            (work_dir / "shots" / "3" / "first_frame.png").write_bytes(b"png3")
+
+            captured_prompts = []
+            captured_final_pairs = []
+            pipeline = Script2VideoPipeline(
+                chat_model=object(),
+                image_generator=object(),
+                video_generator=object(),
+                working_dir=str(work_dir),
+            )
+            pipeline.generate_transition_video = AsyncMock(side_effect=AssertionError("must not invoke muse-video during frames stage"))
+
+            async def fake_select(available_image_path_and_text_pairs, frame_description, **kwargs):
+                return {"reference_image_path_and_text_pairs": [], "text_prompt": "clean anime prompt"}
+
+            class DummyImg:
+                def save(self, path):
+                    Path(path).write_bytes(b"fake-png")
+
+            async def fake_gen_best(prompt, reference_image_paths=None, reference_image_path_and_text_pairs=None, **kwargs):
+                captured_prompts.append(prompt)
+                captured_final_pairs.append(list(reference_image_path_and_text_pairs or []))
+                return DummyImg()
+
+            pipeline.reference_image_selector.select_reference_images_and_generate_prompt = AsyncMock(side_effect=fake_select)
+            pipeline.generate_and_select_best_image = AsyncMock(side_effect=fake_gen_best)
+            pipeline.frame_events = {
+                0: {"first_frame": asyncio.Event()},
+                3: {"first_frame": asyncio.Event()},
+                4: {"first_frame": asyncio.Event()},
+            }
+            pipeline.frame_events[0]["first_frame"].set()
+            pipeline.frame_events[3]["first_frame"].set()
+            pipeline.camera_events = {0: asyncio.Event(), 1: asyncio.Event()}
+            pipeline.camera_events[0].set()
+
+            shots = [
+                ShotDescription(
+                    idx=0, is_last=False, cam_idx=0, visual_desc="Wide pet shop aisle",
+                    variation_type="small", variation_reason="static", ff_desc="wide pet shop aisle",
+                    ff_vis_char_idxs=[0], lf_desc="wide pet shop aisle", lf_vis_char_idxs=[0],
+                    motion_desc="static", audio_desc="ambient", continuity_from_prev=False,
+                ),
+                ShotDescription(idx=1, is_last=False, cam_idx=0, visual_desc="s1", variation_type="small", variation_reason="s", ff_desc="s1", ff_vis_char_idxs=[], lf_desc="s1", lf_vis_char_idxs=[], motion_desc="m", audio_desc="a"),
+                ShotDescription(idx=2, is_last=False, cam_idx=0, visual_desc="s2", variation_type="small", variation_reason="s", ff_desc="s2", ff_vis_char_idxs=[], lf_desc="s2", lf_vis_char_idxs=[], motion_desc="m", audio_desc="a"),
+                ShotDescription(idx=3, is_last=False, cam_idx=0, visual_desc="s3", variation_type="small", variation_reason="s", ff_desc="s3", ff_vis_char_idxs=[], lf_desc="s3", lf_vis_char_idxs=[], motion_desc="m", audio_desc="a"),
+                ShotDescription(
+                    idx=4, is_last=True, cam_idx=1,
+                    visual_desc="Side profile close-up inside pet shop under warm store lighting",
+                    variation_type="small", variation_reason="static",
+                    ff_desc="Side profile close-up inside bright pet shop under warm store lighting",
+                    ff_vis_char_idxs=[0],
+                    lf_desc="Side profile close-up inside bright pet shop under warm store lighting",
+                    lf_vis_char_idxs=[0],
+                    motion_desc="static", audio_desc="thought",
+                    transition_in="cut", continuity_from_prev=False,
+                ),
+            ]
+            chars = [CharacterInScene(idx=0, identifier_in_scene="Seo Jiwoo", is_visible=True, static_features="boy")]
+            cam1 = Camera(idx=1, active_shot_idxs=[4], parent_shot_idx=0, variation_type="medium", variation_reason="angle change", missing_info=None)
+
+            await pipeline.generate_frames_for_single_camera(
+                camera=cam1,
+                shot_descriptions=shots,
+                characters=chars,
+                character_portraits_registry={},
+                priority_shot_idxs=[],
+                shot_panel_refs=None,
+                allow_transition_video=False,
+            )
+
+            pipeline.generate_transition_video.assert_not_called()
+            joined_descs = " ".join(desc for _, desc in captured_final_pairs[0]).lower()
+            self.assertIn("shot 3", joined_descs)
+            self.assertNotIn("rainy navy", joined_descs)
+            self.assertNotIn("stone wall", joined_descs)
+            self.assertNotIn("asphalt", joined_descs)
+            self.assertNotIn("rainy navy", captured_prompts[0].lower())
 
 
 if __name__ == "__main__":

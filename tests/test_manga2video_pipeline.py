@@ -458,7 +458,7 @@ class HybridRenderingGuardsTests(unittest.IsolatedAsyncioTestCase):
             root = Path(tmp)
             cfg = root / "configs"
             cfg.mkdir()
-            (cfg / "agent.local.yaml").write_text("subtitles:\n  enabled: true\n  burn_in: true\n  language: vi\n", encoding="utf-8")
+            (cfg / "agent.local.yaml").write_text("quality:\n  ref_policy: legacy\nsubtitles:\n  enabled: true\n  burn_in: true\n  language: vi\n", encoding="utf-8")
 
             scene_dir = root / ".working_dir" / "ep1" / "manga2video" / "scene_0"
             scene_dir.mkdir(parents=True)
@@ -550,8 +550,8 @@ class HybridRenderingGuardsTests(unittest.IsolatedAsyncioTestCase):
             )
             self.assertEqual(len(frames), 1)
             self.assertTrue(any("PANEL ANCHOR 0" in desc for _, desc in seen_selector_pairs[0]))
-            self.assertEqual(len(seen_img_refs[0]), 8)
-            self.assertEqual(len(set(seen_img_refs[0])), 8)
+            self.assertEqual(len(seen_img_refs[0]), 2)
+            self.assertEqual(len(set(seen_img_refs[0])), 2)
             self.assertEqual(seen_vid_prompts, [])  # stop_after="frames" did not trigger video generation
 
             # Verify Inner Monologue formatting in generate_video_for_single_shot
@@ -1595,6 +1595,121 @@ class FullSeriesAdaptationTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(cli_summary["mode"], "series")
             self.assertEqual(cli_summary["episode_count"], 2)
             self.assertTrue((cli_dir / "series_manifest.json").is_file())
+
+
+class StoryboardSelfReviewRepairTests(unittest.IsolatedAsyncioTestCase):
+    async def test_llm_director_reviews_storyboard_and_shot_descriptions_unconditionally(self):
+        from agents.storyboard_artist import StoryboardArtist
+        from interfaces.character import CharacterInScene
+        from interfaces.shot_description import ShotBriefDescription, ShotDescription
+        from langchain_core.messages import AIMessage
+        from langchain_core.runnables import RunnableLambda
+
+        calls = []
+
+        def _fake_model(prompt_val):
+            calls.append(prompt_val)
+            msgs = prompt_val.messages if hasattr(prompt_val, "messages") else prompt_val
+            sys_msg = str(msgs[0][1] if isinstance(msgs[0], tuple) else getattr(msgs[0], "content", msgs[0]))
+            hum_msg = str(msgs[-1][1] if isinstance(msgs[-1], tuple) else getattr(msgs[-1], "content", msgs[-1]))
+            if "auditing decomposed shot keyframes" in sys_msg:
+                return AIMessage(
+                    content=json.dumps(
+                        {
+                            "needs_repair": True,
+                            "issues": ["Wardrobe drifted from red coat and duplicate alias idx=0 included alongside idx=1."],
+                            "repaired_shots": [
+                                {
+                                    "idx": 0,
+                                    "is_last": True,
+                                    "cam_idx": 0,
+                                    "visual_desc": "Dynamic medium shot of <Akira> inside the cafe.",
+                                    "variation_type": "small",
+                                    "variation_reason": "Subtle head turn in warm ambient lighting.",
+                                    "ff_desc": "<Akira> wearing his crimson jacket sits by the window.",
+                                    "lf_desc": "<Akira> wearing his crimson jacket looks toward the door.",
+                                    "motion_desc": "Camera holds steady as Akira glances right.",
+                                    "ff_vis_char_idxs": [1],
+                                    "lf_vis_char_idxs": [1],
+                                    "audio_desc": "[Speaker] Akira: 'Hey!'",
+                                }
+                            ],
+                        }
+                    )
+                )
+            if "wrong green hoodie" in hum_msg:
+                return AIMessage(
+                    content=json.dumps(
+                        {
+                            "needs_repair": True,
+                            "issues": ["Character Akira wearing unscripted green hoodie instead of canonical crimson jacket."],
+                            "repaired_storyboard": [
+                                {
+                                    "idx": 0,
+                                    "is_last": True,
+                                    "cam_idx": 0,
+                                    "visual_desc": "Low-angle medium shot of <Akira> wearing his crimson jacket inside the cafe.",
+                                    "audio_desc": "[Speaker] Akira: 'Hey!'",
+                                    "transition_in": "cut",
+                                }
+                            ],
+                        }
+                    )
+                )
+            return AIMessage(content=json.dumps({"needs_repair": False, "issues": [], "repaired_storyboard": None}))
+
+        artist = StoryboardArtist(chat_model=RunnableLambda(_fake_model))
+        chars = [
+            CharacterInScene(idx=0, identifier_in_scene="Stranger", is_visible=True, static_features="teen", dynamic_features="crimson jacket"),
+            CharacterInScene(idx=1, identifier_in_scene="Akira", is_visible=True, static_features="teen", dynamic_features="crimson jacket"),
+        ]
+
+        # Even without regex hints, LLM critic still audits and accepts clean fast-path (needs_repair=False)
+        clean_sb = [
+            ShotBriefDescription(
+                idx=0, is_last=True, cam_idx=0, visual_desc="Dynamic angle of <Akira> in cafe.", audio_desc="[Speaker] Akira: 'Hey'"
+            )
+        ]
+        res_clean = await artist.review_and_repair_storyboard(clean_sb, chars, "script")
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(res_clean[0].visual_desc, clean_sb[0].visual_desc)
+
+        # Arbitrary semantic/wardrobe defect NOT matched by regex is caught & fixed by LLM critic
+        drift_sb = [
+            ShotBriefDescription(
+                idx=0,
+                is_last=True,
+                cam_idx=0,
+                visual_desc="Medium shot of <Akira> wearing the wrong green hoodie inside the cafe.",
+                audio_desc="[Speaker] Akira: 'Hey!'",
+            )
+        ]
+        res_repaired = await artist.review_and_repair_storyboard(drift_sb, chars, "script")
+        self.assertEqual(len(calls), 2)
+        self.assertIn("crimson jacket", res_repaired[0].visual_desc)
+        self.assertNotIn("wrong green hoodie", res_repaired[0].visual_desc)
+
+        # Scene-level decomposed ShotDescription critic fixes alias idx & outfit drift dynamically
+        dirty_sds = [
+            ShotDescription(
+                idx=0,
+                is_last=True,
+                cam_idx=0,
+                visual_desc="Dynamic medium shot of <Akira> inside the cafe.",
+                variation_type="small",
+                variation_reason="Hold.",
+                ff_desc="<Akira> wearing green hoodie sits with phantom stranger.",
+                lf_desc="<Akira> wearing green hoodie looks right.",
+                motion_desc="Steady.",
+                ff_vis_char_idxs=[0, 1],
+                lf_vis_char_idxs=[0, 1],
+                audio_desc="[Speaker] Akira: 'Hey!'",
+            )
+        ]
+        repaired_sds = await artist.review_and_repair_shot_descriptions(dirty_sds, chars)
+        self.assertEqual(len(calls), 3)
+        self.assertEqual(repaired_sds[0].ff_vis_char_idxs, [1])
+        self.assertIn("crimson jacket", repaired_sds[0].ff_desc)
 
 
 if __name__ == "__main__":

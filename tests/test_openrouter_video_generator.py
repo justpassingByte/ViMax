@@ -118,7 +118,8 @@ class OpenRouterVideoGeneratorTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(captured["post_url"], "http://127.0.0.1:18610/v1/videos")
         self.assertEqual(captured["poll_url"], "http://127.0.0.1:18610/v1/videos/vid-1")
         self.assertEqual(captured["download_url"], "http://127.0.0.1:18610/v1/media/vid-1.mp4")
-        self.assertTrue(captured["payload"]["images"][0].startswith("data:image/png;base64,"))
+        self.assertTrue(captured["payload"]["images"][0].startswith("data:image/"))
+        self.assertIn(";base64,", captured["payload"]["images"][0])
 
 
     async def test_transient_failed_job_retries_once_and_releases_gate(self):
