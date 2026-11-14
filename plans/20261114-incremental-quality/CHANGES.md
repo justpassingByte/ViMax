@@ -158,3 +158,20 @@ trong `configs/agent.local.yaml` (hoặc đặt biến môi trường `VIMAX_QUA
 - **Chưa làm (8.4 sâu):** chèn khối `SHOT SLOTS` vào prompt grounded + ghi đè trường sau LLM trong `plan_episode`
   (module + schema đã sẵn; để tích hợp runtime lần sau).
 - **Test:** `pytest tests -q` → 386 passed.
+
+## Phase 09 — Trí nhớ cốt truyện (cờ `quality.story_memory`)
+- **Thay đổi:**
+  - `utils/story_memory.py` (mới): `StoryMemory` dưới `<base>/story_memory/`
+    (`facts.jsonl`, `chapters/chNN.json`, `conflicts.json`); `add_fact` (bắt buộc dẫn beat + kind hợp lệ,
+    bỏ fact sai), `add_chapter`, `facts_for`, `search` (text-embedding phase 04 hoặc fallback), `story_so_far`
+    (giới hạn từ), `known_cast`/`format_known_cast_block`. Không lưu chi tiết tạm thời của cảnh.
+  - `agents/story_memory_extractor.py` (mới): `extract_chapter_memory` (LLM injected) — bỏ fact không dẫn
+    beat thật của chương; áp state change vào `profile_store` (đóng state cũ cùng kind); kiểm mâu thuẫn
+    (LLM injected) → `conflicts.json`, giữ cả hai, không chặn.
+  - `agents/manga_reader.py`: thêm slot `{story_context}` (mặc định rỗng) vào prompt reader để chèn
+    `Story so far` + `Known cast` khi có.
+  - Tests: `test_story_memory.py` (fact không dẫn beat bị bỏ; state đóng; story_so_far giới hạn từ; mâu thuẫn ghi lại, chạy tiếp).
+- **Tắt / lùi:** `quality.story_memory: false` → không trích/đưa trí nhớ.
+- **Chưa làm (9.3 sâu):** chạy trích xuất sau mỗi tập trong `plan_series`; chèn `STORY CONTEXT` vào storyboard;
+  thêm issue `fact_contradiction` vào cổng cốt truyện — store/extractor đã sẵn, để tích hợp runtime lần sau.
+- **Test:** `pytest tests -q` → 391 passed.

@@ -65,7 +65,7 @@ Chapter: {chapter} ({title})
 Previous Batch Continuity Tail: {previous_tail_summary}
 Valid Page Indices in THIS Batch: {valid_page_indices}
 Target Beats Style Context: {style_hint}
-
+{story_context}
 Analyze ONLY the images attached below in top-to-bottom reading order:
 """
 
@@ -424,6 +424,7 @@ class MangaReader:
         batch: List[MangaPage],
         previous_tail_summary: str,
         style_hint: str,
+        story_context: str = "",
     ) -> _RawChunkResponse:
         parser = PydanticOutputParser(pydantic_object=_RawChunkResponse)
         system_msg = SystemMessage(
@@ -440,6 +441,7 @@ class MangaReader:
                     previous_tail_summary=previous_tail_summary or "None (start of chapter).",
                     valid_page_indices=[p.page_idx for p in batch],
                     style_hint=style_hint or "2D Japanese anime",
+                    story_context=story_context or "",
                 ),
             }
         ]
