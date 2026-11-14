@@ -127,3 +127,19 @@ trong `configs/agent.local.yaml` (hoặc đặt biến môi trường `VIMAX_QUA
 - **Chưa làm (6.2/6.3 sâu):** đấu `check_frame` vào `generate_and_select_best_image` (chấm ứng viên) và
   đổi thứ tự `render_episode` (frames→QA→full) — module đã sẵn, để tích hợp runtime lần sau.
 - **Test:** `pytest tests -q` → 372 passed.
+
+## Phase 07 — Giọng nói nhất quán (cờ `quality.voice_mode`)
+- **Thay đổi:**
+  - `script2video_pipeline._resolve_character_acoustic_profile(voice_mode=)`: `native_fixed` (mặc định)
+    trả cùng một mô tả giọng cho một nhân vật ở mọi shot (bỏ biến thể theo ngữ cảnh nhánh is_man);
+    `native` giữ hành vi cũ (đổi theo ngữ cảnh). Vẫn ưu tiên `voice_description` từ series bible.
+  - `_format_video_prompt_audio`: cảm xúc tách sang dòng riêng `Delivery emotion:`, không chèn vào
+    mô tả giọng → giọng không trôi.
+  - `tools/audio_reference_probe.py` (mới): `probe_audio_reference_support` (dò một lần, cache
+    `provider_capabilities.json`) + `effective_voice_mode` hạ `native_with_reference` về `native_fixed`
+    khi provider không nhận audio mẫu — fail-soft, không crash.
+  - Tests: `test_voice_profiles.py` (native_fixed bất biến theo ngữ cảnh; native giữ biến thể;
+    provider không nhận audio → fallback; probe lỗi an toàn).
+- **Tắt / lùi:** `quality.voice_mode: native` → về giọng đổi theo ngữ cảnh như cũ.
+- **Không dùng:** TTS ngoài / chuyển giọng (theo yêu cầu) — Muse vẫn lồng tiếng.
+- **Test:** `pytest tests -q` → 378 passed.

@@ -319,8 +319,20 @@ def _load_character_seed_refs(working_dir: str | Path) -> Dict[str, List[str]]:
     return result
 
 
-def _resolve_character_acoustic_profile(speaker: str, characters_data: List[Any], context_desc: str = "") -> Dict[str, str]:
-    """Generically resolve a character's acoustic profile, age group, vocal timbre, and negative constraints."""
+def _resolve_character_acoustic_profile(speaker: str, characters_data: List[Any], context_desc: str = "", voice_mode: str = "") -> Dict[str, str]:
+    """Generically resolve a character's acoustic profile, age group, vocal timbre, and negative constraints.
+
+    ``voice_mode`` (quality.voice_mode): ``native`` keeps the legacy per-shot
+    context variation; ``native_fixed``/``native_with_reference`` return the same
+    voice description for a character across every shot (no drift). Empty -> read config.
+    """
+    if not voice_mode:
+        try:
+            from agent_runtime.config import quality_voice_mode
+            voice_mode = quality_voice_mode(".")
+        except Exception:
+            voice_mode = "native_fixed"
+    fixed = voice_mode != "native"
     spk_raw = (speaker or "").strip()
     spk_clean = re.sub(r"\s*\([^)]*\)", "", spk_raw).strip()
     if not spk_clean:
@@ -399,7 +411,7 @@ def _resolve_character_acoustic_profile(speaker: str, characters_data: List[Any]
         neg = "Strictly NOT female voice, NOT cute kitten meow, NOT high-pitched baby voice, NOT cartoon squeak."
     elif is_man:
         audio_ctx = f"{context_desc} {spk_raw}".lower()
-        if any(w in audio_ctx for w in ["groan", "grunt", "deep bass", "pained", "guttural"]):
+        if (not fixed) and any(w in audio_ctx for w in ["groan", "grunt", "deep bass", "pained", "guttural"]):
             profile = "Extremely deep resonant bass adult male (gravelly low-pitched guttural groan of intense physical battle pain near 80-100Hz). Heavy masculine chest resonance."
             neg = "Strictly NOT female voice, NOT high-pitched airy breath, NOT feminine sigh or gasp, NOT child voice, NOT soft whisper."
         else:
@@ -518,8 +530,13 @@ def _format_video_prompt_audio(
             delivery_mode = "Spoken dialogue (expressive, natural dialogue pacing, lips move in sync)."
         out = [
             "[Audio & Spoken Japanese Dialogue Track ONLY - Studio Anime Voice Acting, No On-screen Subtitles]",
-            f"- Active Speaker: {prof['clean_speaker']}" + (f" ({emotion})" if emotion else ""),
+            f"- Active Speaker: {prof['clean_speaker']}",
             f"- Vocal Acoustic Profile: {prof['profile']}",
+        ]
+        # Emotion travels on its own line so the fixed voice description never drifts (phase 07).
+        if emotion:
+            out.append(f"- Delivery emotion: {emotion}")
+        out += [
             f"- Delivery Mode: {delivery_mode}",
             f"- Acoustic Rules: {prof['negatives']} Only {prof['clean_speaker']} speaks. All other characters in the shot remain completely silent.",
             f"- Spoken Line: '{line}'",
