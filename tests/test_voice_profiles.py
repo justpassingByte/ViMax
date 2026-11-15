@@ -27,6 +27,61 @@ class NativeFixedTests(unittest.TestCase):
         self.assertNotEqual(calm["profile"], pained["profile"])
 
 
+class FrozenVoiceTests(unittest.TestCase):
+    """Episode-level freeze removes cross-scene / name-collision drift (phase 11)."""
+
+    def _clear_memo(self, wd):
+        from pipelines.script2video_pipeline import _VOICE_CACHE_MEMO
+        _VOICE_CACHE_MEMO.pop(wd, None)
+
+    def test_same_character_frozen_across_differing_scene_features(self):
+        with tempfile.TemporaryDirectory() as wd:
+            self._clear_memo(wd)
+            # scene 1: features clearly mark an adult man
+            scene1 = [_Char("Alex", "athletic build adult man, trench coat")]
+            first = _resolve_character_acoustic_profile(
+                "Alex", scene1, voice_mode="native_fixed", working_dir=wd
+            )
+            # scene 2: thinner features that would classify differently if recomputed
+            scene2 = [_Char("Alex", "")]
+            second = _resolve_character_acoustic_profile(
+                "Alex", scene2, voice_mode="native_fixed", working_dir=wd
+            )
+            self.assertEqual(first["profile"], second["profile"])
+
+    def test_two_forms_of_one_name_do_not_collide(self):
+        with tempfile.TemporaryDirectory() as wd:
+            self._clear_memo(wd)
+            chars = [
+                _Char("Alex (Human)", "athletic build adult man"),
+                _Char("Alex (Fat Orange Tabby Cat)", "a fat orange tabby cat"),
+            ]
+            human = _resolve_character_acoustic_profile(
+                "Alex (Human)", chars, voice_mode="native_fixed", working_dir=wd
+            )
+            cat = _resolve_character_acoustic_profile(
+                "Alex (Fat Orange Tabby Cat)", chars, voice_mode="native_fixed", working_dir=wd
+            )
+            # distinct identities keep distinct frozen voices (no shared "Alex" slot)
+            self.assertNotEqual(human["profile"], cat["profile"])
+
+    def test_cache_file_is_written(self):
+        with tempfile.TemporaryDirectory() as wd:
+            self._clear_memo(wd)
+            _resolve_character_acoustic_profile(
+                "Alex", [_Char("Alex", "adult man")], voice_mode="native_fixed", working_dir=wd
+            )
+            self.assertTrue((Path(wd) / "voice_profiles.json").is_file())
+
+    def test_native_mode_does_not_freeze(self):
+        with tempfile.TemporaryDirectory() as wd:
+            self._clear_memo(wd)
+            _resolve_character_acoustic_profile(
+                "Alex", [_Char("Alex", "adult man")], voice_mode="native", working_dir=wd
+            )
+            self.assertFalse((Path(wd) / "voice_profiles.json").is_file())
+
+
 class _GenNoAudio:
     supports_audio_reference = False
 
