@@ -421,6 +421,7 @@ DEFAULT_QUALITY_EXCEPTIONS_QUEUE = True
 DEFAULT_QUALITY_MAX_CLIP_RETAKES = 1
 DEFAULT_QUALITY_CHAPTER_BUDGET_IMAGES = 0         # 0 = unlimited
 DEFAULT_QUALITY_CHAPTER_BUDGET_CLIPS = 0          # 0 = unlimited
+DEFAULT_QUALITY_CAST_LOCK = True                  # strip off-frame characters from the video prompt
 
 _QUALITY_REF_POLICIES = {"legacy", "all_characters", "profile"}
 _QUALITY_EMBEDDINGS = {"off", "dinov2"}
@@ -573,3 +574,7 @@ def quality_chapter_budget_images(workspace_root: str | Path = ".") -> int:
 
 def quality_chapter_budget_clips(workspace_root: str | Path = ".") -> int:
     return _quality_int("chapter_budget_clips", "VIMAX_QUALITY_CHAPTER_BUDGET_CLIPS", DEFAULT_QUALITY_CHAPTER_BUDGET_CLIPS, 0, workspace_root)
+
+
+def quality_cast_lock(workspace_root: str | Path = ".") -> bool:
+    return _quality_bool("cast_lock", "VIMAX_QUALITY_CAST_LOCK", DEFAULT_QUALITY_CAST_LOCK, workspace_root)

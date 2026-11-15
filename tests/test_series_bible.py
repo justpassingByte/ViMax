@@ -60,5 +60,51 @@ class SeriesBibleTests(unittest.TestCase):
         self.assertFalse(bible.available)
 
 
+def _make_relation_series(root: Path):
+    sdir = root / "series" / "rel"
+    sdir.mkdir(parents=True)
+    (sdir / "series.yaml").write_text("title: Rel\n", encoding="utf-8")
+    (sdir / "characters.yaml").write_text(
+        """characters:
+  - id: boy
+    aliases: ["Hojin"]
+    voice_description: "Young boy voice."
+  - id: mother
+    aliases: ["Hojin's Mother"]
+    voice_description: "Adult woman voice."
+  - id: cat
+    aliases: ["Kayden (Fat Orange Tabby Cat)", "Fat Orange Tabby Cat"]
+    voice_description: "Grumpy cat voice."
+  - id: human
+    aliases: ["Kayden", "Kayden (Human)"]
+    voice_description: "Awakened adult male voice."
+""",
+        encoding="utf-8",
+    )
+
+
+class RelationMatchTests(unittest.TestCase):
+    """A possessive/relational name must not borrow the owner's voice (phase 11)."""
+
+    def test_relative_does_not_match_owner(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _make_relation_series(root)
+            b = SeriesBible("rel", str(root))
+            self.assertEqual(b.voice_description("Hojin's Mother"), "Adult woman voice.")
+            self.assertEqual(b.voice_description("Hojin"), "Young boy voice.")
+
+    def test_qualified_form_prefers_its_own_entry(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _make_relation_series(root)
+            b = SeriesBible("rel", str(root))
+            # the cat form gets the cat voice, not the bare "Kayden" human voice
+            self.assertEqual(
+                b.voice_description("Kayden (Fat Orange Tabby Cat)"), "Grumpy cat voice."
+            )
+            self.assertEqual(b.voice_description("Kayden"), "Awakened adult male voice.")
+
+
 if __name__ == "__main__":
     unittest.main()

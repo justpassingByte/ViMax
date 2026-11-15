@@ -9,8 +9,18 @@ value so the pipeline runs unchanged.
 from __future__ import annotations
 
 import functools
+import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+# A needle like "Alex's Mother" / "Alex's father" names a *relative* of a
+# character, not that character — so an alias for the owner must not match it.
+_RELATION_RE = re.compile(
+    r"'s\b|s'\b|\b(?:mother|father|mom|mum|dad|parent|parents|sister|brother|"
+    r"wife|husband|son|daughter|friend|boss|teacher|uncle|aunt|cousin|nephew|"
+    r"niece|grandfather|grandmother|grandpa|grandma|guardian|boyfriend|girlfriend)\b",
+    re.IGNORECASE,
+)
 
 try:
     import yaml
@@ -85,10 +95,34 @@ class SeriesBible:
         if not name_or_alias:
             return None
         needle = name_or_alias.strip().lower()
+        if not needle:
+            return None
+        pairs: List[tuple] = []
         for ch in self._characters:
             for alias in ch.get("aliases", []) or []:
                 a = str(alias).strip().lower()
-                if a and (a == needle or a in needle or needle in a):
+                if a:
+                    pairs.append((a, ch))
+
+        # 1. exact alias match wins outright.
+        for a, ch in pairs:
+            if a == needle:
+                return ch
+
+        # 2. a relational needle ("<name>'s mother") is a different person, so only
+        #    a multi-word alias that matches the whole phrase may claim it — never a
+        #    single-word owner alias ("Alex" must not voice "Alex's Mother").
+        relational = bool(_RELATION_RE.search(needle))
+        for a, ch in sorted(pairs, key=lambda p: -len(p[0])):
+            if relational and len(a.split()) < 2:
+                continue
+            if re.search(rf"\b{re.escape(a)}\b", needle):
+                return ch
+
+        # 3. needle is a shorter form of a longer alias ("Alex" -> "Alex the ...").
+        if not relational:
+            for a, ch in sorted(pairs, key=lambda p: -len(p[0])):
+                if re.search(rf"\b{re.escape(needle)}\b", a):
                     return ch
         return None
 

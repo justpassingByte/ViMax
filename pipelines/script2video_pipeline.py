@@ -27,6 +27,7 @@ from agent_runtime.config import (
     audio_model,
     audio_model_provider,
     audio_voice,
+    quality_cast_lock,
     quality_generic_linter,
     quality_max_reference_images,
     quality_ref_policy,
@@ -319,17 +320,58 @@ def _load_character_seed_refs(working_dir: str | Path) -> Dict[str, List[str]]:
     return result
 
 
-def _resolve_character_acoustic_profile(speaker: str, characters_data: List[Any], context_desc: str = "", voice_mode: str = "") -> Dict[str, str]:
+_VOICE_CACHE_MEMO: Dict[str, Dict[str, Dict[str, str]]] = {}
+
+
+def _voice_cache_path(working_dir: str) -> str:
+    return os.path.join(working_dir, "voice_profiles.json")
+
+
+def _load_voice_cache(working_dir: str) -> Dict[str, Dict[str, str]]:
+    """Episode-level frozen voices keyed by character identity (fail-soft)."""
+    if working_dir in _VOICE_CACHE_MEMO:
+        return _VOICE_CACHE_MEMO[working_dir]
+    cache: Dict[str, Dict[str, str]] = {}
+    path = _voice_cache_path(working_dir)
+    try:
+        if os.path.exists(path):
+            with open(path, "r", encoding="utf-8") as f:
+                loaded = json.load(f)
+            if isinstance(loaded, dict):
+                cache = {k: v for k, v in loaded.items() if isinstance(v, dict)}
+    except Exception:
+        cache = {}
+    _VOICE_CACHE_MEMO[working_dir] = cache
+    return cache
+
+
+def _store_voice_cache(working_dir: str, key: str, value: Dict[str, str]) -> None:
+    cache = _load_voice_cache(working_dir)
+    cache[key] = value
+    try:
+        with open(_voice_cache_path(working_dir), "w", encoding="utf-8") as f:
+            json.dump(cache, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass  # a render must never fail because the voice cache cannot be written
+
+
+def _resolve_character_acoustic_profile(speaker: str, characters_data: List[Any], context_desc: str = "", voice_mode: str = "", working_dir: str = "") -> Dict[str, str]:
     """Generically resolve a character's acoustic profile, age group, vocal timbre, and negative constraints.
 
     ``voice_mode`` (quality.voice_mode): ``native`` keeps the legacy per-shot
     context variation; ``native_fixed``/``native_with_reference`` return the same
     voice description for a character across every shot (no drift). Empty -> read config.
+
+    When ``working_dir`` is given in a fixed mode, the FIRST voice resolved for a
+    character identity is frozen in ``voice_profiles.json`` and reused for every
+    later shot. This removes the two residual drift sources: a bare name that
+    collides with another form of the same character (e.g. human vs. animal), and
+    per-scene feature text that flips the age/gender classification.
     """
     if not voice_mode:
         try:
             from agent_runtime.config import quality_voice_mode
-            voice_mode = quality_voice_mode(".")
+            voice_mode = quality_voice_mode(working_dir or ".")
         except Exception:
             voice_mode = "native_fixed"
     fixed = voice_mode != "native"
@@ -342,34 +384,34 @@ def _resolve_character_acoustic_profile(speaker: str, characters_data: List[Any]
             "negatives": "Strictly clean studio recording, no robotic or synthetic artifacts."
         }
 
-    char_match = None
-    for c in (characters_data or []):
+    def _feats(c):
         if isinstance(c, dict):
-            ident = c.get("identifier_in_scene", "")
-            static_feat = c.get("static_features", "")
-            dyn_feat = c.get("dynamic_features", "") or ""
-        else:
-            ident = getattr(c, "identifier_in_scene", "")
-            static_feat = getattr(c, "static_features", "")
-            dyn_feat = getattr(c, "dynamic_features", "") or ""
+            return (c.get("identifier_in_scene", ""), c.get("static_features", ""), c.get("dynamic_features", "") or "")
+        return (getattr(c, "identifier_in_scene", ""), getattr(c, "static_features", ""), getattr(c, "dynamic_features", "") or "")
 
-        ident_clean = re.sub(r"\s*\([^)]*\)", "", ident).strip()
-        if spk_raw.lower() == ident.lower() or spk_clean.lower() == ident_clean.lower():
+    char_match = None
+    # Pass 1: full exact identifier match ("Alex (Masked Form)"), so a form
+    # with a parenthetical qualifier is never shadowed by another form that shares
+    # the same bare name ("Alex (Human)").
+    for c in (characters_data or []):
+        ident, static_feat, dyn_feat = _feats(c)
+        if spk_raw.lower() == ident.lower():
             char_match = (ident, static_feat, dyn_feat)
             break
+    # Pass 2: clean-name equality (speaker given without the qualifier).
     if not char_match:
         for c in (characters_data or []):
-            if isinstance(c, dict):
-                ident = c.get("identifier_in_scene", "")
-                static_feat = c.get("static_features", "")
-                dyn_feat = c.get("dynamic_features", "") or ""
-            else:
-                ident = getattr(c, "identifier_in_scene", "")
-                static_feat = getattr(c, "static_features", "")
-                dyn_feat = getattr(c, "dynamic_features", "") or ""
-
+            ident, static_feat, dyn_feat = _feats(c)
             ident_clean = re.sub(r"\s*\([^)]*\)", "", ident).strip()
-            if ident_clean.lower() in spk_clean.lower() or spk_clean.lower() in ident_clean.lower():
+            if spk_clean.lower() == ident_clean.lower():
+                char_match = (ident, static_feat, dyn_feat)
+                break
+    # Pass 3: loose substring match as a last resort.
+    if not char_match:
+        for c in (characters_data or []):
+            ident, static_feat, dyn_feat = _feats(c)
+            ident_clean = re.sub(r"\s*\([^)]*\)", "", ident).strip()
+            if ident_clean and (ident_clean.lower() in spk_clean.lower() or spk_clean.lower() in ident_clean.lower()):
                 char_match = (ident, static_feat, dyn_feat)
                 break
 
@@ -377,15 +419,31 @@ def _resolve_character_acoustic_profile(speaker: str, characters_data: List[Any]
     if char_match:
         desc = f"{char_match[1]} {char_match[2]}".lower()
 
+    # Frozen voice (fixed modes): key by the matched full identifier so two forms
+    # of one character ("Alex (Human)" vs "Alex (Masked Form)") never
+    # share a cache slot, and a bare name resolves to the first form frozen for it.
+    identity_key = (char_match[0] if char_match else spk_clean).strip()
+    if fixed and working_dir:
+        cached = _load_voice_cache(working_dir).get(identity_key)
+        if isinstance(cached, dict) and cached.get("profile"):
+            return {
+                "clean_speaker": cached.get("clean_speaker", spk_clean),
+                "profile": cached["profile"],
+                "negatives": cached.get("negatives", ""),
+            }
+
     # Prefer a series-bible voice description when one is configured (series-agnostic).
     series_voice = ""
     try:
         from utils.series_bible import load_configured_series as _lcs
-        series_voice = _lcs(".").voice_description(spk_clean)
+        series_voice = _lcs(working_dir or ".").voice_description(spk_clean)
     except Exception:
         series_voice = ""
     if series_voice:
-        return {"clean_speaker": spk_clean, "profile": series_voice, "negatives": "Keep the voice consistent with the character's established profile."}
+        result = {"clean_speaker": spk_clean, "profile": series_voice, "negatives": "Keep the voice consistent with the character's established profile."}
+        if fixed and working_dir:
+            _store_voice_cache(working_dir, identity_key, result)
+        return result
 
     is_narrator = any(w in spk_clean.lower() or w in desc for w in ["narrator", "người dẫn chuyện", "narration"])
     is_woman = any(w in spk_clean.lower() or w in desc for w in ["woman", "mother", "female", "girl", "mẹ", "bà", "cô"])
@@ -421,11 +479,14 @@ def _resolve_character_acoustic_profile(speaker: str, characters_data: List[Any]
         profile = "Clear expressive Japanese anime voice actor matching scene context."
         neg = "Strictly clean studio recording, no robotic or synthetic artifacts."
 
-    return {
+    result = {
         "clean_speaker": spk_clean,
         "profile": profile,
         "negatives": neg,
     }
+    if fixed and working_dir:
+        _store_voice_cache(working_dir, identity_key, result)
+    return result
 
 
 def _clean_sfx_onomatopoeia(text: str) -> str:
@@ -446,6 +507,8 @@ def _format_video_prompt_audio(
     timing_note: str = "",
     is_back_view: bool = False,
     is_no_face: bool = False,
+    speaker_offscreen: bool = False,
+    working_dir: str = "",
 ) -> str:
     """Format dialogue into structured, hallucination-proof audio & vocal profile specifications."""
     if not clean_audio_desc or not clean_audio_desc.strip():
@@ -461,7 +524,7 @@ def _format_video_prompt_audio(
     )
     if narrator_match:
         line = narrator_match.group(1).strip()
-        prof = _resolve_character_acoustic_profile("Narrator", characters_data)
+        prof = _resolve_character_acoustic_profile("Narrator", characters_data, working_dir=working_dir)
         out = [
             "[Audio & Voiceover Track ONLY - Spoken Japanese Narration & SFX, No On-screen Subtitles]",
             f"- Active Speaker: Narrator",
@@ -495,7 +558,7 @@ def _format_video_prompt_audio(
     if thought_match:
         speaker_block = thought_match.group(1).strip()
         line = thought_match.group(thought_match.lastindex).strip() if thought_match.lastindex else ""
-        prof = _resolve_character_acoustic_profile(speaker_block, characters_data)
+        prof = _resolve_character_acoustic_profile(speaker_block, characters_data, working_dir=working_dir)
         out = [
             "[Audio & Voiceover Track ONLY - Spoken Japanese Inner Monologue & SFX, No On-screen Subtitles]",
             f"- Active Speaker: {prof['clean_speaker']}",
@@ -521,9 +584,15 @@ def _format_video_prompt_audio(
         raw_em = em[-1].strip() if em else ""
         emotion = "" if re.search(r"\b(cat|human|boy|girl|man|woman)\b", raw_em.lower()) else raw_em
         line = spoken_match.group(spoken_match.lastindex).strip() if spoken_match.lastindex else ""
-        prof = _resolve_character_acoustic_profile(speaker_block, characters_data, context_desc=clean_audio_desc)
+        prof = _resolve_character_acoustic_profile(speaker_block, characters_data, context_desc=clean_audio_desc, working_dir=working_dir)
         if is_no_face:
             delivery_mode = "Pure off-screen voiceover. Camera remains strictly locked on the subject/prop/environment in Image 0. Strictly NO character face in frame, NO human head, NO mouth visible."
+        elif speaker_offscreen:
+            delivery_mode = (
+                "Off-screen voice from a character beyond the frame. The speaker is NOT visible and must never enter the frame; "
+                "the camera holds strictly on the character shown in Image 0, who only listens with lips closed. "
+                "Strictly DO NOT pan, tilt, or cut to show the speaker."
+            )
         elif is_back_view:
             delivery_mode = "Physical guttural vocal groan from behind (rear framing; character remains completely facing away with head bowed down toward the ground; camera holds strictly static behind the character; strictly DO NOT turn the character around, DO NOT reveal face or mouth)."
         else:
@@ -553,7 +622,7 @@ def _format_video_prompt_audio(
             ident = c.get("identifier_in_scene", "") if isinstance(c, dict) else getattr(c, "identifier_in_scene", "")
             ident_clean = re.sub(r"\s*\([^)]*\)", "", ident).strip()
             if ident_clean and re.search(rf"\b{re.escape(ident_clean)}\b", clean_audio_desc, re.IGNORECASE):
-                prof = _resolve_character_acoustic_profile(ident_clean, characters_data, context_desc=clean_audio_desc)
+                prof = _resolve_character_acoustic_profile(ident_clean, characters_data, context_desc=clean_audio_desc, working_dir=working_dir)
                 char_vocal_rule = (
                     f"- Character Vocal Identity: {prof['clean_speaker']}\n"
                     f"- Vocal Acoustic Profile: {prof['profile']}\n"
@@ -1717,6 +1786,37 @@ class Script2VideoPipeline:
             if not has_characters and characters_data:
                 has_characters = bool(re.search(r"<[^>]+>", shot_description.visual_desc or ""))
 
+            # Cast lock (phase 11): drop off-frame characters from the motion prompt so
+            # the video model does not pan the camera and invent an unreferenced person.
+            cast_lock_on = quality_cast_lock(_resolve_workspace_root(self.working_dir))
+            offscreen_chars: List[Any] = []
+            cast_lock_text = ""
+            speaker_offscreen = False
+            if cast_lock_on:
+                try:
+                    from agents import cast_lock as _cast_lock
+                    offscreen_chars = _cast_lock.offscreen_characters(
+                        shot_description, characters_data, extra_text=clean_audio_desc
+                    )
+                    offscreen_names = [_cast_lock._char_id(c) for c in offscreen_chars]
+                    # Also fire on a generic "off-frame boy/figure/..." with no name.
+                    generic_offscreen = _cast_lock.references_offscreen_person(
+                        f"{motion_clean} {getattr(shot_description, 'visual_desc', '') or ''}"
+                    )
+                    offscreen_present = bool(offscreen_chars) or generic_offscreen
+                    if offscreen_present:
+                        logging.info(
+                            "cast_lock shot %s: scrubbing off-frame reference(s) from motion prompt%s",
+                            shot_description.idx,
+                            (": " + ", ".join(n for n in offscreen_names if n)) if offscreen_names else " (generic off-frame person)",
+                        )
+                        motion_clean = _cast_lock.sanitize_offscreen_motion(motion_clean, offscreen_names)
+                    if has_characters:
+                        visible_ids = _cast_lock.visible_identifiers(shot_description, characters_data)
+                        cast_lock_text = _cast_lock.cast_lock_block(visible_ids, offscreen_present)
+                except Exception as exc:  # fail-soft: never block a render on cast lock
+                    logging.warning(f"cast_lock skipped for shot {shot_description.idx}: {exc}")
+
             has_two_keyframes = len(frame_paths) >= 2
             is_back_view = False
             if not has_characters:
@@ -1741,8 +1841,28 @@ class Script2VideoPipeline:
                     r"\b(wound|wounded|injury|injured|bleed|bleeding|blood|bloodied|bruise|bruised|scraped|scratched|cut|cuts|slashed|battle wear|battle damage|torn)\b",
                     desc_text,
                 ))
-                is_back_view = bool(re.search(
-                    r"\b(seen from behind|from behind|back view|rear view|behind|head bowed|back turned|facing away|facing wall|over-the-shoulder|back of|looking down|obscured face|face obscured|insert shot|tightly focused on.*?hand|focused on.*?hand|grounded hand|close-up on.*?hand|hand pressed|knuckles|foot|feet|boots)\b",
+                # NOTE (phase 11): "looking down" and a bare "behind" were removed —
+                # a character lowering their gaze to speak to someone is NOT a rear
+                # shot, and misreading it as one made the prompt contradict a
+                # face-forward keyframe and the video model re-staged the scene.
+                _back_view_re = (
+                    r"\b(seen from behind|from behind|back view|rear view|head bowed|back turned|"
+                    r"facing away|facing wall|over-the-shoulder|back of (?:his|her|their|the) (?:head|body)|"
+                    r"obscured face|face obscured|insert shot|tightly focused on.*?hand|"
+                    r"focused on.*?hand|grounded hand|close-up on.*?hand|hand pressed|knuckles|foot|feet|boots)\b"
+                )
+                if not quality_cast_lock(_resolve_workspace_root(self.working_dir)):
+                    # legacy (cast_lock off): keep the old, looser detection
+                    _back_view_re = (
+                        r"\b(seen from behind|from behind|back view|rear view|behind|head bowed|back turned|"
+                        r"facing away|facing wall|over-the-shoulder|back of|looking down|obscured face|face obscured|"
+                        r"insert shot|tightly focused on.*?hand|focused on.*?hand|grounded hand|close-up on.*?hand|"
+                        r"hand pressed|knuckles|foot|feet|boots)\b"
+                    )
+                is_back_view = bool(re.search(_back_view_re, desc_text))
+
+                is_insert_shot = bool(re.search(
+                    r"\b(hand|hands|paw|paws|fingers|knuckles|foot|feet|boot|boots|grounded hand|reaching down|close-up on.*?hand|macro|insert shot)\b",
                     desc_text,
                 ))
 
@@ -1754,7 +1874,13 @@ class Script2VideoPipeline:
                     else ""
                 )
 
-                if is_back_view:
+                if is_insert_shot:
+                    facial_rule = (
+                        "[STRICT FRAMING & SUBJECT LOCK]: Close-up insert framing strictly locked to the specific subject visible in Image 0 (e.g. hand, paw, or object). "
+                        "Strictly DO NOT pan out or introduce human heads, faces, torsos, or extra bodies. "
+                        "Only animate the visible elements from Image 0; all unshown character body parts remain completely off-screen throughout the shot."
+                    )
+                elif is_back_view:
                     facial_rule = (
                         "[STRICT FRAMING & POSE LOCK]: Locked static perspective directly matching Image 0. "
                         "The character remains completely motionless facing away with head bowed down toward the ground throughout the shot. "
@@ -1780,9 +1906,26 @@ class Script2VideoPipeline:
                 if has_spoken_audio
                 else ""
             )
-            formatted_audio = _format_video_prompt_audio(clean_audio_desc, characters_data, timing_note, is_back_view=is_back_view)
+            # If the line's speaker is a character not shown in the frame, deliver it
+            # as an off-screen voice so the model does not pan to find a face to lip-sync.
+            if cast_lock_on:
+                try:
+                    from agents import cast_lock as _cast_lock
+                    _spk = re.search(r"\[Speaker\]\s*([^:\n]+?)\s*(?:\(|:)", clean_audio_desc, re.IGNORECASE)
+                    if _spk:
+                        speaker_offscreen = _cast_lock.speaker_is_offscreen(
+                            _spk.group(1).strip(), shot_description, characters_data
+                        )
+                except Exception:
+                    speaker_offscreen = False
+            formatted_audio = _format_video_prompt_audio(
+                clean_audio_desc, characters_data, timing_note,
+                is_back_view=is_back_view, speaker_offscreen=speaker_offscreen,
+                working_dir=self.working_dir,
+            )
+            cast_lock_part = cast_lock_text if cast_lock_on else ""
             if suppress_subs:
-                visual_body = "\n".join(part for part in (keyframe_note, motion_clean, injury_persistence_rule, facial_rule, aesthetic_rule) if part).strip()
+                visual_body = "\n".join(part for part in (keyframe_note, motion_clean, cast_lock_part, injury_persistence_rule, facial_rule, aesthetic_rule) if part).strip()
                 sections = []
                 if visual_body:
                     sections.append(
@@ -1792,7 +1935,7 @@ class Script2VideoPipeline:
                     sections.append(formatted_audio)
                 video_prompt = "\n\n".join(sections).strip()
             else:
-                visual_body = "\n".join(part for part in (keyframe_note, motion_clean, injury_persistence_rule, facial_rule, aesthetic_rule) if part).strip()
+                visual_body = "\n".join(part for part in (keyframe_note, motion_clean, cast_lock_part, injury_persistence_rule, facial_rule, aesthetic_rule) if part).strip()
                 video_prompt = "\n\n".join(part for part in (visual_body, formatted_audio) if part).strip()
             gen_kwargs: Dict[str, Any] = {
                 "prompt": video_prompt,

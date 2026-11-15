@@ -65,6 +65,7 @@ quality:                         # Cờ nâng cấp chất lượng (incremental
   max_clip_retakes: 1            # phase 10: số lần làm lại clip tối đa
   chapter_budget_images: 0       # phase 10: trần số ảnh mỗi chương (0 = không giới hạn)
   chapter_budget_clips: 0        # phase 10: trần số clip mỗi chương (0 = không giới hạn)
+  cast_lock: true                # phase 11: xoá nhân vật ngoài khung khỏi prompt video (chống Muse bịa nhân vật thứ 2)
 
 
 image:

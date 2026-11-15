@@ -194,6 +194,39 @@ trong `configs/agent.local.yaml` (hoặc đặt biến môi trường `VIMAX_QUA
   liên kết trang review trong web UI — module + CLI đã sẵn, để tích hợp lần sau.
 - **Test:** `pytest tests -q` → 396 passed.
 
+## Phase 11 — Cast lock + chống lệch giọng (cờ `quality.cast_lock`, `quality.voice_mode`)
+Hai lỗi thật lấy từ shot trong `.working_dir`, sửa để không lặp lại:
+
+**1. Muse bịa nhân vật thứ 2 (cast lock).** Khung chỉ có 1 nhân vật nhưng prompt
+chuyển động vẫn nhắc nhân vật ngoài khung ("facing left toward the off-frame boy"),
+khiến Muse lia camera và vẽ ra một người khác (không có ảnh tham chiếu → sai mặt).
+- `agents/cast_lock.py` (mới, hàm thuần, không hardcode tên series): `offscreen_characters`,
+  `references_offscreen_person`, `sanitize_offscreen_motion` ("toward the off-frame boy"
+  → "toward off-frame space"; "looks down at X" → "eyes lowered"; xoá lệnh pan/tilt/cut
+  để lộ người vắng mặt), `cast_lock_block` (chốt đúng N nhân vật trong clip),
+  `speaker_is_offscreen`.
+- `pipelines/script2video_pipeline.py`: trong `generate_video_for_single_shot` quét nhân vật
+  ngoài khung, làm sạch `motion_desc`, chèn khối `[CAST LOCK]`, và chuyển thoại của người
+  ngoài khung thành "off-screen voice" (không bắt nhân vật trong khung nhép môi).
+- Sửa regex `is_back_view`: bỏ "looking down" và chữ "behind" đứng riêng — cảnh cúi mắt
+  nói chuyện không còn bị hiểu nhầm là "quay lưng" (prompt cũ mâu thuẫn keyframe nhìn thẳng).
+- Tắt: `quality.cast_lock: false` → về hành vi cũ (gồm cả regex back-view cũ).
+
+**2. Giọng nhân vật "lâu lâu bị lệch".** Ba nguồn gây lệch, đã bịt:
+- Hàm khớp nhân vật ưu tiên tên-sạch nên "Kayden (Human)" và "Kayden (Fat Orange Tabby Cat)"
+  (cùng rút gọn thành "Kayden") bị lẫn → sửa `_resolve_character_acoustic_profile` khớp
+  **đúng identifier đầy đủ trước**, rồi mới tới tên-sạch, rồi substring.
+- Giọng tính lại mỗi shot từ feature theo scene → đông cứng giọng **một lần/tập** trong
+  `voice_profiles.json` (chỉ ở voice_mode cố định), các shot sau dùng lại y hệt.
+- `utils/series_bible.py`: `_match_character` cũ dùng `alias in needle` nên "Hojin's Mother"
+  dính alias "Hojin" → mẹ nói giọng bé 6 tuổi. Sửa: khớp chính xác trước, tên sở hữu/quan hệ
+  ("X's mother") không được mượn giọng của chủ sở hữu, ưu tiên alias dài/đúng từ → đồng thời
+  khiến dạng mèo lấy đúng giọng mèo thay vì giọng người.
+- Tắt: `quality.voice_mode: native` → bỏ đông cứng giọng (vẫn giữ sửa khớp tên/series-bible).
+
+Test: `tests/test_cast_lock.py` (18), bổ sung `tests/test_voice_profiles.py` (freeze/collision),
+`tests/test_series_bible.py` (possessive/qualified match).
+
 ## Tổng kết
 - 11 phase (00–10) đã làm, mỗi phase một commit, test luôn xanh (396 passed cuối cùng).
 - Mọi cờ `quality.*` mặc định = bản nâng cấp; tắt từng cờ để lùi an toàn.
